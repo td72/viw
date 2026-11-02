@@ -29,6 +29,7 @@ enum FileKind {
     case table        // CSV / TSV: grid view
     case workbook     // xlsx / xlsm: grid view with a sheet bar
     case database     // SQLite: grid view, one sheet per table / view
+    case archive      // zip: grid of the entries, Enter opens one in a tab
     case pdf          // PDFKit
     case image        // png / jpg / gif / heic / …
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
@@ -55,6 +56,7 @@ enum FileKind {
             return ext != "db" || SQLiteDatabase.isDatabase(url) ? .database : .plain
         }
         if ext == "pdf" { return .pdf }
+        if ArchiveBrowser.extensions.contains(ext) { return .archive }
         if RichDocument.extensions.contains(ext) { return .document }
         if ext == "ipynb" { return .notebook }
         if imageExtensions.contains(ext) { return .image }
@@ -85,6 +87,8 @@ protocol DocumentView: AnyObject {
     var view: NSView { get }
     /// Tells the controller what to do with a file link the user clicked inside the content.
     var onOpenFile: ((URL) -> Void)? { get set }
+    /// Open `url` in a new tab (zip entries); views that never do so keep the default.
+    var onOpenTab: ((URL) -> Void)? { get set }
     /// Receiver of the vim keys typed into the content.
     var commands: ViewerCommands? { get set }
     /// Extra for the window subtitle ("3 / 12" pages, image size); `onStatusChange` fires when it changes.
@@ -118,8 +122,10 @@ protocol DocumentView: AnyObject {
     func clearSelection()
     /// `.`: show / hide a detail pane, where the view has one.
     func toggleDetail()
-    /// Enter / `i` / `⌃w w`: move focus between the main view and its pane, where the view has one.
+    /// Enter / `⌃w w`: move focus between the main view and its pane, where the view has one (zip: open the entry).
     func switchPane()
+    /// `i`: into the pane.
+    func enterPane()
 
     /// `+` / `-` / `=`: views with their own scale (PDF, images) return true; text views leave it
     /// to the theme (font size).
@@ -146,6 +152,9 @@ protocol DocumentView: AnyObject {
 }
 
 extension DocumentView {
+    var onOpenTab: ((URL) -> Void)? { get { nil } set {} }
+    func enterPane() { switchPane() }
+
     var status: String? { nil }
     func zoomView(_ delta: Int) -> Bool { false }
     func resetZoomView() -> Bool { false }
@@ -203,6 +212,7 @@ final class DocumentController: NSObject, ViewerCommands {
 
     private func bind(_ v: DocumentView) {
         v.onOpenFile = { [weak self] url in self?.open(url) }
+        v.onOpenTab = { [weak self] url in self?.host?.open([url]) }
         v.onStatusChange = { [weak self] in self.map { $0.host?.documentDidChangeTitle($0) } }
         v.commands = self
     }
@@ -210,7 +220,7 @@ final class DocumentController: NSObject, ViewerCommands {
     /// Which `DocumentView` draws `kind`; the same class is reused across loads.
     private static func viewType(for kind: FileKind) -> DocumentView.Type {
         switch kind {
-        case .table, .workbook, .database: return TableDocumentView.self
+        case .table, .workbook, .database, .archive: return TableDocumentView.self
         case .pdf: return PDFDocumentView.self
         case .image: return ImageDocumentView.self
         case .video, .audio: return MediaDocumentView.self
@@ -271,6 +281,7 @@ final class DocumentController: NSObject, ViewerCommands {
     func clearSelection() { documentView.clearSelection() }
     func toggleDetail() { documentView.toggleDetail() }
     func switchPane() { documentView.switchPane() }
+    func enterPane() { documentView.enterPane() }
 
     func reload() { if !documentView.rotate(1) { load() } }
     func rotateBack() { _ = documentView.rotate(-1) }

@@ -75,6 +75,13 @@
             <array><string>xlsx</string><string>xlsm</string></array>
         </dict>
         <dict>
+            <key>CFBundleTypeName</key><string>Zip Archive</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>public.zip-archive</string></array>
+            <key>CFBundleTypeExtensions</key><array><string>zip</string><string>jar</string><string>whl</string></array>
+        </dict>
+        <dict>
             <key>CFBundleTypeName</key><string>SQLite Database</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>

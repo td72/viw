@@ -50,6 +50,19 @@ import Testing
         #expect(throws: ZipArchive.Error.self) { try ZipArchive(data: Data("PK but not a zip".utf8)) }
     }
 
+    @Test func encryptedAndDates() throws {
+        let zip = try ZipArchive(url: try fixture("encrypted.zip"))
+        #expect(zip.entries["secret.txt"]?.encrypted == true)
+        #expect(zip.entries["open.txt"]?.encrypted == false)
+        #expect(throws: ZipArchive.Error.self) { try zip.data(for: "secret.txt") }
+        #expect(try zip.data(for: "open.txt") == Data("open text\n".utf8))
+        let when = try #require(zip.entries["open.txt"]?.modified)
+        #expect(when > Date(timeIntervalSince1970: 1_700_000_000))      // a real date, not 1980
+        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day, .hour, .minute, .second], from: try #require(ZipArchive.dosDate(time: 0x7D7C, date: 0x5D63)))
+        #expect([c.year, c.month, c.day, c.hour, c.minute, c.second] == [2026, 11, 3, 15, 43, 56])
+        #expect(ZipArchive.dosDate(time: 0, date: 0) == nil)
+    }
+
     @Test func crc32() {
         #expect(ZipArchive.crc32(Data()) == 0)
         #expect(ZipArchive.crc32(Data("123456789".utf8)) == 0xCBF4_3926)  // the standard check value
@@ -121,6 +134,7 @@ import Testing
         #expect({ if case .table = kind("a.tsv") { return true } else { return false } }())
         #expect({ if case .workbook = kind("a.XLSX") { return true } else { return false } }())
         #expect({ if case .database = kind("a.sqlite") { return true } else { return false } }())
+        #expect({ if case .archive = kind("a.whl") { return true } else { return false } }())
         #expect({ if case .pdf = kind("a.pdf") { return true } else { return false } }())
         #expect({ if case .document = kind("a.docx") { return true } else { return false } }())
         #expect({ if case .document = kind("a.rtf") { return true } else { return false } }())
@@ -263,5 +277,36 @@ import Testing
         defer { try? FileManager.default.removeItem(at: fake) }
         #expect({ if case .plain = FileKind.of(fake) { return true } else { return false } }())
         #expect(SQLiteDatabase.quote("a\"b") == "\"a\"\"b\"")
+    }
+}
+
+@Suite struct ArchiveBrowserTests {
+    @Test func listingPreviewAndExtraction() throws {
+        let a = try ArchiveBrowser(url: try fixture("mixed.zip"))
+        let t = a.table()
+        #expect(t.header == ["Name", "Size", "Packed", "Modified", "Method"])
+        #expect(t.rows.map { $0[0] } == ["deflate.txt", "dir/日本語.txt", "empty.txt", "stored.txt"])
+        #expect(t.rows[3][1] == "12" && t.rows[3][4] == "stored")
+        #expect(t.rows[0][1] == "5000" && t.rows[0][4] == "deflate" && Int(t.rows[0][2])! < 5000)
+        #expect(t.types[1] == .integer)
+        #expect(a.entryCount == 4 && a.totalSize == 5000 + 15 + 0 + 12)
+        #expect(a.preview(3) == "stored bytes")
+        #expect(a.preview(1) == "こんにちは")
+        #expect(a.preview(0)?.hasSuffix("\n…") == true)              // longer than the preview window
+        #expect(t.preview?(2) == "")                                  // empty entry: empty text
+        let url = try #require(t.activate?(1))
+        #expect(url.lastPathComponent == "日本語.txt" && url.deletingLastPathComponent().lastPathComponent == "dir")
+        #expect(try String(contentsOf: url, encoding: .utf8) == "こんにちは")
+        #expect(a.extract(99) == nil)
+    }
+
+    @Test func binaryEncryptedAndFolders() throws {
+        let enc = try ArchiveBrowser(url: try fixture("encrypted.zip"))
+        let t = enc.table()
+        #expect(t.rows.first { $0[0] == "secret.txt" }?[4] == "encrypted")
+        #expect(enc.preview(t.rows.firstIndex { $0[0] == "secret.txt" }!) == nil)
+        #expect(enc.extract(t.rows.firstIndex { $0[0] == "secret.txt" }!) == nil)
+        let bad = try ArchiveBrowser(url: try fixture("badcrc.zip"))
+        #expect(bad.preview(bad.names.firstIndex(of: "stored.txt")!) == nil)  // CRC mismatch: nothing shown
     }
 }

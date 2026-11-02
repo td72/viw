@@ -22,8 +22,11 @@ protocol ViewerCommands: AnyObject {
     func clearSelection()
     /// `.`: show / hide the detail pane (tables: the selected row in full).
     func toggleDetail()
-    /// Enter / `i` (or `⌃w w` / `⌃w h/j/k/l`): move the keyboard focus between the main view and its pane.
+    /// Enter (or `⌃w w` / `⌃w h/j/k/l`): move the keyboard focus between the main view and its pane;
+    /// on a zip row, open the entry instead.
     func switchPane()
+    /// `i`: into the pane (what Enter does except on a zip row).
+    func enterPane()
     /// `I`: move the detail pane between the right side and the bottom.
     func togglePanePosition()
     /// `p`: PDF page view ⇄ continuous scrolling.
@@ -107,7 +110,7 @@ struct VimKeyMap {
             case .end: c.scrollToBottom()
             case .tab: c.selectTab(offset: n) // Tab / Shift-Tab cycle through tabs
             case .backTab: c.selectTab(offset: -n)
-            case .carriageReturn, .enter: c.switchPane() // Enter: into the detail pane (Esc comes back)
+            case .carriageReturn, .enter: c.switchPane() // Enter: into the detail pane (Esc comes back); zip: open the entry
             default: break
             }
             return true
@@ -145,7 +148,7 @@ struct VimKeyMap {
         case "N": c.findNext(reverse: true)
         case "y": c.copySelection()
         case "Y": c.copyRow()
-        case "i": c.switchPane()       // like Enter: into the detail pane
+        case "i": c.enterPane()        // into the detail pane (Enter does the same, except on a zip row)
         case ".": c.toggleDetail()     // show / hide the detail pane
         case "I": c.togglePanePosition()
         case "p": c.togglePageMode()
@@ -164,4 +167,8 @@ struct VimKeyMap {
         }
         return true
     }
+}
+
+extension ViewerCommands {
+    func enterPane() { switchPane() }
 }

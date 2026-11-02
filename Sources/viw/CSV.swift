@@ -95,6 +95,10 @@ struct TableData {
     var columnWidths: [Double?] = []
     /// xlsx: formula text by data-row index, then column (the grid shows the value; the pane shows both).
     var formulas: [Int: [Int: String]] = [:]
+    /// zip: text shown under the fields in the detail pane (the start of the entry).
+    var preview: ((Int) -> String?)?
+    /// zip: Enter on a row opens this file in a new tab (the entry, extracted).
+    var activate: ((Int) -> URL?)?
     var columnCount: Int { header.count }
     var truncated: Bool { rows.count + 1 < totalRows }
 
