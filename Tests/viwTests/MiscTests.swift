@@ -120,6 +120,7 @@ import Testing
         #expect({ if case .jsonl = kind("a.ndjson") { return true } else { return false } }())
         #expect({ if case .table = kind("a.tsv") { return true } else { return false } }())
         #expect({ if case .workbook = kind("a.XLSX") { return true } else { return false } }())
+        #expect({ if case .database = kind("a.sqlite") { return true } else { return false } }())
         #expect({ if case .pdf = kind("a.pdf") { return true } else { return false } }())
         #expect({ if case .document = kind("a.docx") { return true } else { return false } }())
         #expect({ if case .document = kind("a.rtf") { return true } else { return false } }())
@@ -227,5 +228,40 @@ import Testing
         let md = try Notebook.markdown(data: Data(nb.utf8), source: URL(fileURLWithPath: "/x.ipynb")).markdown
         #expect(md.contains("````\nx = \"```\"\n````"))
         #expect(Notebook.stripANSI("\u{1B}[0;31mred\u{1B}[0m plain") == "red plain")
+    }
+}
+
+@Suite struct SQLiteTests {
+    @Test func tablesAndViews() throws {
+        let db = try SQLiteDatabase(url: try fixture("sample.sqlite"))
+        #expect(db.sheetNames == ["empty_table", "items", "regions", "stock"])   // tables then views, no indexes
+        #expect(db.sheetNote(1) == "table · 4 rows")
+        #expect(db.sheetNote(0) == "table · 0 rows")
+        #expect(db.sheetNote(3) == "view")
+        let items = try db.table(forSheet: 1)
+        #expect(items.header == ["id", "name", "price", "qty", "note", "data", "added"])
+        #expect(items.rows[0] == ["1", "apple", "120.5", "3", "fresh", "<blob 4 bytes>", "2026-10-01"])
+        #expect(items.rows[1] == ["2", "pear", "95", "0", "", "", "2026-10-02"])              // NULLs empty
+        #expect(items.rows[2][1] == "りんご" && items.rows[2][2] == "1234567.891" && items.rows[2][5] == "<blob 1 byte>")
+        #expect(items.rows[3][2] == "1.500000E-05" && items.rows[3][3] == "-1" && items.rows[3][5] == "<blob 0 bytes>")
+        #expect(items.totalRows == 5 && !items.truncated)
+        #expect(items.types == [.integer, .text, .number, .integer, .text, .text, .date])
+        let regions = try db.table(forSheet: 2)
+        #expect(regions.header[0] == "region name")
+        let stock = try db.table(forSheet: 3)
+        #expect(stock.header == ["name", "qty", "value"])
+        #expect(stock.rows.map { $0[0] } == ["apple", "りんご"])
+        #expect(try db.table(forSheet: 0).rows.isEmpty)
+    }
+
+    @Test func detection() throws {
+        #expect(SQLiteDatabase.isDatabase(try fixture("sample.sqlite")))
+        #expect(!SQLiteDatabase.isDatabase(try fixture("mixed.zip")))
+        #expect(throws: SQLiteDatabase.Error.self) { try SQLiteDatabase(url: try fixture("mixed.zip")) }
+        let fake = FileManager.default.temporaryDirectory.appendingPathComponent("viw-fake-\(getpid()).db")
+        try Data("not a database".utf8).write(to: fake)
+        defer { try? FileManager.default.removeItem(at: fake) }
+        #expect({ if case .plain = FileKind.of(fake) { return true } else { return false } }())
+        #expect(SQLiteDatabase.quote("a\"b") == "\"a\"\"b\"")
     }
 }

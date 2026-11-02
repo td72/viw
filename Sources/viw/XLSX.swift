@@ -5,12 +5,15 @@ import Foundation
 /// `XMLParser` reads the small ones. Formulas are not evaluated (the cached `<v>` is shown);
 /// styles only decide how numbers are spelled (dates, decimals, percent, grouping). Sheets
 /// are parsed on demand, so a 20-sheet book opens as fast as its first sheet.
-final class Workbook {
+final class Workbook: SheetSource {
     struct Sheet {
         let name: String
         let path: String   // zip entry, e.g. "xl/worksheets/sheet1.xml"
         let hidden: Bool
     }
+
+    var sheetNames: [String] { sheets.map(\.name) }
+    func sheetNote(_ i: Int) -> String? { sheets.indices.contains(i) && sheets[i].hidden ? "hidden in Excel" : nil }
 
     let sheets: [Sheet]
     private let zip: ZipArchive

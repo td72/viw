@@ -30,7 +30,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     private let searchField = NSSearchField()
     private let footer = NSTextField(labelWithString: "")
     /// xlsx: the open book, its sheet tabs, and the sheets parsed so far (parsing is on demand).
-    private var workbook: Workbook?
+    private var book: SheetSource?   // xlsx workbook or SQLite database: sheets / tables in the bar
     private var sheetIndex = 0
     private var sheetCache: [Int: TableData] = [:]
     private let sheetBar = TabBarView()
@@ -56,15 +56,16 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     private static let rowNumberID = NSUserInterfaceItemIdentifier("#")
 
     var view: NSView { root }
-    /// Window subtitle for workbooks: the sheet name.
+    /// Window subtitle for workbooks / databases: the sheet or table name (and its note).
     var status: String? {
-        guard let workbook, workbook.sheets.indices.contains(sheetIndex) else { return nil }
-        let s = workbook.sheets[sheetIndex]
-        return s.name + (s.hidden ? " (hidden)" : "")
+        guard let book, book.sheetNames.indices.contains(sheetIndex) else { return nil }
+        let name = book.sheetNames[sheetIndex]
+        return book.sheetNote(sheetIndex).map { "\(name) (\($0))" } ?? name
     }
+
     var onOpenFile: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
-    var helpSections: [KeyHelp.Section] { workbook == nil ? [KeyHelp.table] : [KeyHelp.table, KeyHelp.sheets] }
+    var helpSections: [KeyHelp.Section] { book == nil ? [KeyHelp.table] : [KeyHelp.table, KeyHelp.sheets] }
     var commands: ViewerCommands? {
         get { table.commands }
         set {
@@ -232,15 +233,13 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         let savedOrigin = scrollView.contentView.bounds.origin
         switch source {
         case .file(let url):
+            if case .workbook = kind { loadBook(url, "xlsx") { try Workbook(url: $0) }; break }
+            if case .database = kind { loadBook(url, "sqlite") { try SQLiteDatabase(url: $0) }; break }
             guard let bytes = FileManager.default.contents(atPath: url.path) else {
                 data = TableData(header: ["Cannot read \(url.path)"], rows: [], totalRows: 0)
                 break
             }
-            if case .workbook = kind {
-                loadWorkbook(url)
-                break
-            }
-            workbook = nil
+            book = nil
             let t0 = CFAbsoluteTimeGetCurrent()
             data = CSV.table(from: bytes, url: url)
             if ProcessInfo.processInfo.environment["VIW_TIMING"] != nil {
@@ -248,7 +247,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
                 FileHandle.standardError.write("csv parse: \(ms) ms (\(data.rows.count) rows × \(data.columnCount) cols)\n".data(using: .utf8)!)
             }
         case .text(let s, _):
-            workbook = nil
+            book = nil
             data = CSV.table(from: Data(s.utf8), url: URL(fileURLWithPath: "stdin.csv"))
         }
         updateSheetBar()
@@ -265,57 +264,58 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         }
     }
 
-    // MARK: Workbooks (xlsx)
+    // MARK: Workbooks (xlsx) and databases (SQLite)
 
     /// Open the book and show the sheet that was selected before (a reload keeps the sheet).
-    private func loadWorkbook(_ url: URL) {
+    private func loadBook(_ url: URL, _ label: String, _ open: (URL) throws -> SheetSource) {
         let t0 = CFAbsoluteTimeGetCurrent()
         sheetCache = [:]
         do {
-            let wb = try Workbook(url: url)
-            workbook = wb
-            sheetIndex = min(sheetIndex, wb.sheets.count - 1)
+            let b = try open(url)
+            book = b
+            sheetIndex = max(0, min(sheetIndex, b.sheetNames.count - 1))
             data = sheetTable(sheetIndex)
         } catch {
-            workbook = nil
+            book = nil
             data = TableData(header: ["Cannot read \(url.lastPathComponent): \(error)"], rows: [], totalRows: 0)
         }
         if ProcessInfo.processInfo.environment["VIW_TIMING"] != nil {
             let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
-            FileHandle.standardError.write("xlsx open: \(ms) ms (\(data.rows.count) rows × \(data.columnCount) cols, \(workbook?.sheets.count ?? 0) sheets)\n".data(using: .utf8)!)
+            FileHandle.standardError.write("\(label) open: \(ms) ms (\(data.rows.count) rows × \(data.columnCount) cols, \(book?.sheetNames.count ?? 0) sheets)\n".data(using: .utf8)!)
         }
     }
 
     private func sheetTable(_ i: Int) -> TableData {
         if let t = sheetCache[i] { return t }
-        guard let workbook else { return TableData(header: [], rows: [], totalRows: 0) }
+        guard let book, book.sheetNames.indices.contains(i) else { return TableData(header: [], rows: [], totalRows: 0) }
         let t: TableData
-        do { t = try workbook.table(forSheet: i) } catch {
-            t = TableData(header: ["Cannot read sheet \(workbook.sheets[i].name): \(error)"], rows: [], totalRows: 0)
+        do { t = try book.table(forSheet: i) } catch {
+            t = TableData(header: ["Cannot read \(book.sheetNames[i]): \(error)"], rows: [], totalRows: 0)
         }
         sheetCache[i] = t
         return t
     }
 
     private func updateSheetBar() {
-        sheetBar.isHidden = workbook == nil
-        guard let workbook else { return }
-        sheetBar.items = workbook.sheets.enumerated().map { i, s in
-            (title: s.name, tooltip: "\(s.name) — sheet \(i + 1) of \(workbook.sheets.count)" + (s.hidden ? " (hidden in Excel)" : ""))
+        sheetBar.isHidden = book == nil
+        guard let book else { return }
+        let names = book.sheetNames
+        sheetBar.items = names.enumerated().map { i, name in
+            (title: name, tooltip: "\(name) — \(i + 1) of \(names.count)" + (book.sheetNote(i).map { " (\($0))" } ?? ""))
         }
         sheetBar.selected = sheetIndex
     }
 
     /// `]` / `[`: cycle through the sheets (wrapping, like tabs).
     func selectSheet(offset: Int) {
-        guard let workbook, workbook.sheets.count > 1 else { return }
-        let n = workbook.sheets.count
+        guard let book, book.sheetNames.count > 1 else { return }
+        let n = book.sheetNames.count
         selectSheet(index: ((sheetIndex + offset) % n + n) % n)
     }
 
     /// Show sheet `i`: a different grid, so filter, sort and cursors start over.
     func selectSheet(index i: Int) {
-        guard let workbook, workbook.sheets.indices.contains(i), i != sheetIndex else { return }
+        guard let book, book.sheetNames.indices.contains(i), i != sheetIndex else { return }
         sheetIndex = i
         data = sheetTable(i)
         sortColumn = nil
