@@ -3,7 +3,7 @@
 # viw — vim-keyed viewer
 
 A small, fast, native viewer for macOS with vim keybindings. It renders GitHub Flavored Markdown, shows source
-files with syntax highlighting, CSV / TSV and Excel workbooks as a grid, PDFs and images. It was called `mdv` until
+files with syntax highlighting, CSV / TSV and Excel workbooks as a grid, Word / RTF documents, PDFs and images. It was called `mdv` until
 v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 - **Native AppKit** — `NSTextView` + TextKit 1, no WebView, no Electron. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
@@ -104,6 +104,12 @@ The choice is remembered; `pdf_mode = "page"` in the config makes it the default
 centered; `+` / `-` / `=` zoom, `r` / `R` rotate, `y` copies the image. Animated GIF / WebP / APNG / HEICS play frame by
 frame (so rotation and zoom apply to every frame) with the frame number in the badge: Space pauses and resumes, `n` / `N`
 step one frame; a hidden tab stops the timer.
+
+`.docx` is converted to Markdown and rendered like a `.md` file: headings, bold / italic / strikethrough, lists,
+tables, hyperlinks, pictures, block quotes and monospace runs as code (colours, underline and page layout are not
+kept). `.doc` / `.odt` and `.rtf` / `.rtfd` open through the importers macOS ships with, as formatted text with the
+document's own fonts (scaled so a 12 pt body matches the Markdown body) and black-on-white recoloured for the current
+appearance. The usual movement, search and `y` apply to both.
 
 `.mp4` / `.mov` / `.m4v` and `.m4a` / `.mp3` / `.wav` / `.aiff` / `.flac` open in an AVKit player: whatever macOS can decode
 plays (H.264 / HEVC, AAC / MP3 / …); `.mkv` / `.webm` / `.avi` / `.ogg` are recognised but get a note saying another player is

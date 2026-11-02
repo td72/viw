@@ -213,6 +213,16 @@ if args.first == "--unzip", args.count >= 2 {
 
 // Debug: `viw --xlsx book.xlsx` lists the sheets, `viw --xlsx book.xlsx N` (or a sheet name) writes that sheet as TSV
 // (`--formulas` adds `{=formula}` after cells that have one).
+// `viw --docx file.docx`: print the Markdown a Word file converts to (debugging).
+if args.first == "--docx", args.count >= 2 {
+    do {
+        print(try DOCX.markdown(url: URL(fileURLWithPath: args[1])).markdown, terminator: "")
+        exit(0)
+    } catch {
+        FileHandle.standardError.write("viw: \(error)\n".data(using: .utf8)!)
+        exit(1)
+    }
+}
 if args.first == "--xlsx", args.count >= 2 {
     do {
         let t0 = CFAbsoluteTimeGetCurrent()
