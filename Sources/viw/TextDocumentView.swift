@@ -83,10 +83,10 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         var kind = kind
         let (text, baseURL): (String, URL?)
         switch source {
-        case .file(let url) where url.pathExtension.lowercased() == "docx":
-            // Word: converted to Markdown (see DOCX); pictures live in a temporary directory.
+        case .file(let url) where Converted.handles(url):
+            // Word / notebook: converted to Markdown; pictures live in a temporary directory.
             do {
-                let r = try DOCX.markdown(url: url)
+                let r = try Converted.markdown(url: url)
                 text = r.markdown
                 baseURL = (r.mediaDirectory ?? url.deletingLastPathComponent()).appendingPathComponent(url.lastPathComponent)
                 kind = .markdown
@@ -169,7 +169,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             if records.count < all.count { truncated = (records.count, all.count) }
             attributed.append(renderer.renderCodeBlocks(records, language: "json", boxed: records.count <= 300))
             codeBlocks = renderer.codeBlocks
-        case .plain, .document, .table, .workbook, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
+        case .plain, .document, .notebook, .table, .workbook, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
             attributed.append(renderer.renderCode(clamp(text), language: nil))
         }
         if let t = truncated {
@@ -428,6 +428,19 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         textView.cacheDisplay(in: bounds, to: rep)
         if let png = rep.representation(using: .png, properties: [:]) {
             try? png.write(to: URL(fileURLWithPath: path))
+        }
+    }
+}
+
+/// Files that are read as Markdown after a conversion (Word, Jupyter).
+enum Converted {
+    static func handles(_ url: URL) -> Bool { ["docx", "ipynb"].contains(url.pathExtension.lowercased()) }
+
+    static func markdown(url: URL) throws -> (markdown: String, mediaDirectory: URL?) {
+        switch url.pathExtension.lowercased() {
+        case "docx": let r = try DOCX.markdown(url: url); return (r.markdown, r.mediaDirectory)
+        case "ipynb": let r = try Notebook.markdown(url: url); return (r.markdown, r.mediaDirectory)
+        default: throw Notebook.Error(description: "no conversion for \(url.lastPathComponent)")
         }
     }
 }

@@ -87,6 +87,12 @@
             <key>CFBundleTypeExtensions</key><array><string>docx</string><string>doc</string><string>odt</string></array>
         </dict>
         <dict>
+            <key>CFBundleTypeName</key><string>Jupyter Notebook</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>CFBundleTypeExtensions</key><array><string>ipynb</string></array>
+        </dict>
+        <dict>
             <key>CFBundleTypeName</key><string>Rich Text</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>

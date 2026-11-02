@@ -3,7 +3,7 @@
 # viw — vim-keyed viewer
 
 A small, fast, native viewer for macOS with vim keybindings. It renders GitHub Flavored Markdown, shows source
-files with syntax highlighting, CSV / TSV and Excel workbooks as a grid, Word / RTF documents, PDFs and images. It was called `mdv` until
+files with syntax highlighting, CSV / TSV and Excel workbooks as a grid, Word / RTF documents, Jupyter notebooks, PDFs and images. It was called `mdv` until
 v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 - **Native AppKit** — `NSTextView` + TextKit 1, no WebView, no Electron. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
@@ -107,7 +107,9 @@ step one frame; a hidden tab stops the timer.
 
 `.docx` is converted to Markdown and rendered like a `.md` file: headings, bold / italic / strikethrough, lists,
 tables, hyperlinks, pictures, block quotes and monospace runs as code (colours, underline and page layout are not
-kept). `.doc` / `.odt` and `.rtf` / `.rtfd` open through the importers macOS ships with, as formatted text with the
+kept). `.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
+kernel's language with `In [n]:` above, outputs below them (text as plain blocks, pictures inline, errors with the terminal
+colours stripped, HTML-only outputs as a note), raw cells as written. `.doc` / `.odt` and `.rtf` / `.rtfd` open through the importers macOS ships with, as formatted text with the
 document's own fonts (scaled so a 12 pt body matches the Markdown body) and black-on-white recoloured for the current
 appearance. The usual movement, search and `y` apply to both.
 
@@ -215,7 +217,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/FileWatcher.swift` | kqueue file watcher that survives atomic saves |
 
 Debug helpers: `viw --unzip archive.zip [entry]` lists an archive's entries or writes one to stdout; `viw --xlsx book.xlsx [N | name]`
-lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula).
+lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula). `viw --markdown file.docx|file.ipynb`
+prints the Markdown a Word file or notebook is rendered from.
 Environment variables (wrapped by `mise r snapshot`): `VIW_TIMING=1` prints parse / render / layout /
 highlight-query times and scroll offsets to stderr, `VIW_SNAPSHOT=out.png` renders the whole document to a PNG and exits (`VIW_SNAPSHOT_WIDTH=700`,
 `VIW_DARK=1` to vary).
