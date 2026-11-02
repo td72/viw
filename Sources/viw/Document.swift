@@ -32,6 +32,7 @@ enum FileKind {
     case image        // png / jpg / gif / heic / …
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
     case audio        // m4a / mp3 / wav / aiff / flac (AVKit)
+    case notebook     // ipynb: converted to Markdown (Notebook)
     case document     // docx / doc / rtf / rtfd / odt: NSAttributedString's importers, shown in the text view
     case plain        // unknown extension: one monochrome code block
 
@@ -50,6 +51,7 @@ enum FileKind {
         if ["xlsx", "xlsm"].contains(ext) { return .workbook }
         if ext == "pdf" { return .pdf }
         if RichDocument.extensions.contains(ext) { return .document }
+        if ext == "ipynb" { return .notebook }
         if imageExtensions.contains(ext) { return .image }
         if videoExtensions.contains(ext) { return .video }
         if audioExtensions.contains(ext) { return .audio }

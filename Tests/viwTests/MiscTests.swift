@@ -125,6 +125,7 @@ import Testing
         #expect({ if case .document = kind("a.rtf") { return true } else { return false } }())
         #expect({ if case .document = kind("a.doc") { return true } else { return false } }())
         #expect({ if case .document = kind("a.odt") { return true } else { return false } }())
+        #expect({ if case .notebook = kind("a.ipynb") { return true } else { return false } }())
         #expect({ if case .image = kind("a.webp") { return true } else { return false } }())
         #expect({ if case .image = kind("a.svg") { return true } else { return false } }())
         #expect({ if case .video = kind("a.mkv") { return true } else { return false } }())
@@ -196,5 +197,35 @@ import Testing
         let md = c.out.joined(separator: "\n")
         #expect(md.contains("\\- not a list \\*nor emphasis\\* \\#tag \\<b\\>"))
         #expect(md.contains("**bold** plain\\\nnext\\_line"))
+    }
+}
+
+@Suite struct NotebookTests {
+    @Test func convertsToMarkdown() throws {
+        let r = try Notebook.markdown(url: try fixture("sample.ipynb"))
+        let md = r.markdown
+        #expect(md.hasPrefix("# Sales analysis\n\nA **notebook** rendered by viw."))
+        #expect(md.contains("`In [1]:`\n\n```python\nimport pandas as pd\ndf = pd.DataFrame"))
+        #expect(md.contains("```python\ndf\n```\n\n```\n  region  units\n0   East    120\n1   West     95\n```"))  // text/plain wins over text/html
+        #expect(md.contains("```\nEast 120\nWest 95\n```"))                                         // stream, trailing newline trimmed
+        #expect(md.contains("```\n<Axes: >\n```"))
+        let dir = try #require(r.mediaDirectory)
+        #expect(md.contains("![output 1](" + (dir.appendingPathComponent("output-1.png").path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "") + ")"))
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("output-1.png").path))
+        #expect(md.contains("ZeroDivisionError: division by zero\n```"))
+        #expect(!md.contains("\u{1B}"))                                                             // ANSI stripped
+        #expect(md.contains("```\nraw cell, shown as written: *not* markdown\n```"))
+        #expect(md.contains("`In [ ]:`\n\n```python\n\n```"))                                     // never-run empty cell
+        #expect(md.hasSuffix("## Done\n\n| region | units |\n| --- | --- |\n| East | 120 |\n\n"))
+    }
+
+    @Test func oddInputs() throws {
+        #expect(throws: Notebook.Error.self) { try Notebook.markdown(data: Data("{}".utf8), source: URL(fileURLWithPath: "/x.ipynb")) }
+        #expect(throws: Notebook.Error.self) { try Notebook.markdown(data: Data("nope".utf8), source: URL(fileURLWithPath: "/x.ipynb")) }
+        // No kernel metadata: plain fences. Backticks inside a cell widen the fence.
+        let nb = #"{"cells":[{"cell_type":"code","source":"x = \"```\"","outputs":[]}],"metadata":{}}"#
+        let md = try Notebook.markdown(data: Data(nb.utf8), source: URL(fileURLWithPath: "/x.ipynb")).markdown
+        #expect(md.contains("````\nx = \"```\"\n````"))
+        #expect(Notebook.stripANSI("\u{1B}[0;31mred\u{1B}[0m plain") == "red plain")
     }
 }
