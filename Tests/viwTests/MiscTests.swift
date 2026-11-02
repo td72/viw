@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import viw
@@ -120,11 +121,80 @@ import Testing
         #expect({ if case .table = kind("a.tsv") { return true } else { return false } }())
         #expect({ if case .workbook = kind("a.XLSX") { return true } else { return false } }())
         #expect({ if case .pdf = kind("a.pdf") { return true } else { return false } }())
+        #expect({ if case .document = kind("a.docx") { return true } else { return false } }())
+        #expect({ if case .document = kind("a.rtf") { return true } else { return false } }())
+        #expect({ if case .document = kind("a.doc") { return true } else { return false } }())
+        #expect({ if case .document = kind("a.odt") { return true } else { return false } }())
         #expect({ if case .image = kind("a.webp") { return true } else { return false } }())
         #expect({ if case .image = kind("a.svg") { return true } else { return false } }())
         #expect({ if case .video = kind("a.mkv") { return true } else { return false } }())
         #expect({ if case .audio = kind("a.flac") { return true } else { return false } }())
         #expect({ if case .plain = kind("a.unknownext") { return true } else { return false } }())
         #expect(!kind("a.unknownext").isViewable)
+    }
+}
+
+@Suite struct RichDocumentTests {
+    @Test func readsRtf() throws {
+        let rtf = try RichDocument.read(url: try fixture("sample.rtf"))
+        #expect(rtf.string.contains("Third point"))
+        #expect(rtf.string.contains("日本語の段落"))
+        var hasTable = false, hasBold = false
+        rtf.enumerateAttributes(in: NSRange(location: 0, length: rtf.length), options: []) { attrs, _, _ in
+            if let p = attrs[.paragraphStyle] as? NSParagraphStyle, !p.textBlocks.isEmpty { hasTable = true }
+            if let f = attrs[.font] as? NSFont, f.fontDescriptor.symbolicTraits.contains(.bold) { hasBold = true }
+        }
+        #expect(hasTable && hasBold)
+    }
+
+    @Test func restyleKeepsAuthorColoursAndScalesFonts() {
+        let s = NSMutableAttributedString()
+        s.append(NSAttributedString(string: "black ", attributes: [.foregroundColor: NSColor.black, .font: NSFont.systemFont(ofSize: 12), .backgroundColor: NSColor.white]))
+        s.append(NSAttributedString(string: "red ", attributes: [.foregroundColor: NSColor.red, .font: NSFont.systemFont(ofSize: 8)]))
+        s.append(NSAttributedString(string: "none", attributes: [.font: NSFont.systemFont(ofSize: 24)]))
+        let out = RichDocument.restyle(s, text: .labelColor, scale: 1.5)
+        #expect(out.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .labelColor)
+        #expect(out.attribute(.backgroundColor, at: 0, effectiveRange: nil) == nil)
+        #expect(out.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? NSColor == .red)
+        #expect(out.attribute(.foregroundColor, at: 10, effectiveRange: nil) as? NSColor == .labelColor)
+        #expect((out.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize == 18)
+        #expect((out.attribute(.font, at: 6, effectiveRange: nil) as? NSFont)?.pointSize == 12)
+        #expect((out.attribute(.font, at: 10, effectiveRange: nil) as? NSFont)?.pointSize == 36)
+        #expect(RichDocument.luminance(of: .white) > 0.99 && RichDocument.luminance(of: .black) < 0.01)
+    }
+}
+
+@Suite struct DOCXTests {
+    @Test func convertsToMarkdown() throws {
+        let r = try DOCX.markdown(url: try fixture("sample.docx"))
+        let md = r.markdown
+        #expect(md.contains("# viw sample document\n"))
+        #expect(md.contains("# Lists\n"))          // Title and Heading 1 are both level 1
+        #expect(md.contains("**bold**, *italic* and red text, plus 日本語の段落も混ぜてあります。"))
+        #expect(md.contains("- First point\n- Second point\n- Third point"))
+        #expect(md.contains("- Third point with a longer sentence to wrap in a narrow window.\n\n1. Step one\n2. Step two\n\n"))
+        #expect(md.contains("| **Region** | **Units** | **Revenue** |\n| --- | --- | --- |\n| East | 120 | 18,000 |"))
+        #expect(md.contains("[github.com/td72/viw](https://github.com/td72/viw)"))
+        #expect(md.contains("> A quote paragraph."))
+        #expect(md.contains("`print(\"hello\")`"))
+        let dir = try #require(r.mediaDirectory)
+        #expect(md.contains("![image1](" + (dir.appendingPathComponent("image1.png").path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "") + ")"))
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("image1.png").path))
+    }
+
+    @Test func escapesMarkdownSyntax() throws {
+        // A paragraph built by hand: text that would otherwise be read as Markdown.
+        let xml = """
+        <w:document xmlns:w="w"><w:body>
+        <w:p><w:r><w:t>- not a list *nor emphasis* #tag &lt;b&gt;</w:t></w:r></w:p>
+        <w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">bold </w:t></w:r><w:r><w:t>plain</w:t><w:br/><w:t>next_line</w:t></w:r></w:p>
+        </w:body></w:document>
+        """
+        let root = try #require(XMLTree.parse(Data(xml.utf8)))
+        var c = DOCX.Converter(zip: try ZipArchive(url: try fixture("mixed.zip")), source: URL(fileURLWithPath: "/x.docx"))
+        c.blocks(in: try #require(root["w:body"]))
+        let md = c.out.joined(separator: "\n")
+        #expect(md.contains("\\- not a list \\*nor emphasis\\* \\#tag \\<b\\>"))
+        #expect(md.contains("**bold** plain\\\nnext\\_line"))
     }
 }

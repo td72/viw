@@ -80,9 +80,26 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         self.theme = theme
         textView.maxContentWidth = theme.maxWidth
         textView.relayoutColumn()
+        var kind = kind
         let (text, baseURL): (String, URL?)
         switch source {
-        case .file(let url):
+        case .file(let url) where url.pathExtension.lowercased() == "docx":
+            // Word: converted to Markdown (see DOCX); pictures live in a temporary directory.
+            do {
+                let r = try DOCX.markdown(url: url)
+                text = r.markdown
+                baseURL = (r.mediaDirectory ?? url.deletingLastPathComponent()).appendingPathComponent(url.lastPathComponent)
+                kind = .markdown
+            } catch {
+                show(error: "Cannot read \(url.lastPathComponent): \(error.localizedDescription)")
+                return
+            }
+        case .file:
+            if case .document = kind {
+                loadRich(source: source, preserveScroll: preserveScroll, savedOrigin: savedOrigin)
+                return
+            }
+            let url = source.url!
             guard let data = FileManager.default.contents(atPath: url.path) else {
                 show(error: "Cannot read \(url.path)")
                 return
@@ -152,7 +169,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             if records.count < all.count { truncated = (records.count, all.count) }
             attributed.append(renderer.renderCodeBlocks(records, language: "json", boxed: records.count <= 300))
             codeBlocks = renderer.codeBlocks
-        case .plain, .table, .workbook, .pdf, .image, .video, .audio: // these have their own DocumentView; text only if they ever land here
+        case .plain, .document, .table, .workbook, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
             attributed.append(renderer.renderCode(clamp(text), language: nil))
         }
         if let t = truncated {
@@ -182,6 +199,36 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
         if preserveScroll, savedOrigin.y > 0 {
             textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            scroll(toY: savedOrigin.y)
+        }
+    }
+
+    /// Word / RTF / OpenDocument: the attributed string NSAttributedString reads, restyled for
+    /// the theme (see `RichDocument`). Cut at `maxDisplayLength` like text is.
+    private func loadRich(source: Source, preserveScroll: Bool, savedOrigin: NSPoint) {
+        guard let url = source.url else { show(error: "Documents can only be opened from a file"); return }
+        let rich: NSAttributedString
+        do { rich = try RichDocument.read(url: url) } catch {
+            show(error: "Cannot read \(url.lastPathComponent): \(error.localizedDescription)")
+            return
+        }
+        let attributed = NSMutableAttributedString(attributedString:
+            RichDocument.restyle(rich, text: theme.text, scale: theme.baseSize / RichDocument.nominalSize))
+        if attributed.length > Self.maxDisplayLength {
+            let total = attributed.length
+            attributed.deleteCharacters(in: NSRange(location: Self.maxDisplayLength, length: total - Self.maxDisplayLength))
+            let f = NumberFormatter()
+            f.numberStyle = .decimal
+            let style = NSMutableParagraphStyle()
+            style.paragraphSpacingBefore = theme.baseSize
+            attributed.append(NSAttributedString(
+                string: "\nShowing the first \(f.string(from: Self.maxDisplayLength as NSNumber)!) of \(f.string(from: total as NSNumber)!) characters — the rest is cut off to keep the viewer responsive.\n",
+                attributes: [.font: theme.body, .foregroundColor: theme.secondary, .paragraphStyle: style]))
+        }
+        textView.textStorage?.setAttributedString(attributed)
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        highlight([], sync: true) // no code blocks; bumps the generation so an older highlight pass cannot land
+        if preserveScroll, savedOrigin.y > 0 {
             scroll(toY: savedOrigin.y)
         }
     }

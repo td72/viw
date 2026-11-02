@@ -75,6 +75,25 @@
             <array><string>xlsx</string><string>xlsm</string></array>
         </dict>
         <dict>
+            <key>CFBundleTypeName</key><string>Word Document</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>org.openxmlformats.wordprocessingml.document</string>
+                <string>com.microsoft.word.doc</string>
+                <string>org.oasis-open.opendocument.text</string>
+            </array>
+            <key>CFBundleTypeExtensions</key><array><string>docx</string><string>doc</string><string>odt</string></array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key><string>Rich Text</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>public.rtf</string><string>com.apple.rtfd</string></array>
+            <key>CFBundleTypeExtensions</key><array><string>rtf</string><string>rtfd</string></array>
+        </dict>
+        <dict>
             <key>CFBundleTypeName</key><string>Video</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>
