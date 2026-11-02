@@ -29,7 +29,7 @@ enum FileKind {
     case table        // CSV / TSV: grid view
     case workbook     // xlsx / xlsm: grid view with a sheet bar
     case database     // SQLite: grid view, one sheet per table / view
-    case archive      // zip: grid of the entries, Enter opens one in a tab
+    case archive      // zip: a tree of the entries, Enter opens one in a tab
     case pdf          // PDFKit
     case image        // png / jpg / gif / heic / …
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
@@ -122,10 +122,8 @@ protocol DocumentView: AnyObject {
     func clearSelection()
     /// `.`: show / hide a detail pane, where the view has one.
     func toggleDetail()
-    /// Enter / `⌃w w`: move focus between the main view and its pane, where the view has one (zip: open the entry).
+    /// Enter / `i` / `⌃w w`: move focus between the main view and its pane, where the view has one.
     func switchPane()
-    /// `i`: into the pane.
-    func enterPane()
 
     /// `+` / `-` / `=`: views with their own scale (PDF, images) return true; text views leave it
     /// to the theme (font size).
@@ -153,7 +151,6 @@ protocol DocumentView: AnyObject {
 
 extension DocumentView {
     var onOpenTab: ((URL) -> Void)? { get { nil } set {} }
-    func enterPane() { switchPane() }
 
     var status: String? { nil }
     func zoomView(_ delta: Int) -> Bool { false }
@@ -220,7 +217,8 @@ final class DocumentController: NSObject, ViewerCommands {
     /// Which `DocumentView` draws `kind`; the same class is reused across loads.
     private static func viewType(for kind: FileKind) -> DocumentView.Type {
         switch kind {
-        case .table, .workbook, .database, .archive: return TableDocumentView.self
+        case .table, .workbook, .database: return TableDocumentView.self
+        case .archive: return ArchiveDocumentView.self
         case .pdf: return PDFDocumentView.self
         case .image: return ImageDocumentView.self
         case .video, .audio: return MediaDocumentView.self
@@ -281,7 +279,6 @@ final class DocumentController: NSObject, ViewerCommands {
     func clearSelection() { documentView.clearSelection() }
     func toggleDetail() { documentView.toggleDetail() }
     func switchPane() { documentView.switchPane() }
-    func enterPane() { documentView.enterPane() }
 
     func reload() { if !documentView.rotate(1) { load() } }
     func rotateBack() { _ = documentView.rotate(-1) }

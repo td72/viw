@@ -47,7 +47,7 @@ enum KeyHelp {
         Entry("⌘F", "the system find bar (same as /)"),
     ])
 
-    static let table = Section(title: "Table (CSV / xlsx / SQLite / zip)", entries: [
+    static let table = Section(title: "Table (CSV / xlsx / SQLite)", entries: [
         Entry("h / l   0 / $", "column cursor: the cell y copies and s sorts by"),
         Entry("f", "filter rows (Enter keeps the filter, Esc clears it)"),
         Entry("s / S", "sort by the cursor column (again: reverse) / file order"),
@@ -59,8 +59,12 @@ enum KeyHelp {
     ])
 
     static let archive = Section(title: "Zip", entries: [
-        Entry("Enter", "open the entry in a new tab (extracted to a temporary folder)"),
-        Entry("i", "into the pane: the fields and the start of a text entry"),
+        Entry("j / k   gg / G", "move through the tree"),
+        Entry("h / l", "fold the folder (or go to its parent) / unfold (or step in)"),
+        Entry("Enter", "open the file in a new tab (extracted to a temporary folder); folders fold / unfold"),
+        Entry("/   n / N", "find an entry by path   next / previous match"),
+        Entry("y", "copy the entry's path"),
+        Entry(".   I", "show / hide the pane (details, the start of a text entry)   pane on the right / at the bottom"),
     ])
 
     static let sheets = Section(title: "Sheets (xlsx) / tables (SQLite)", entries: [

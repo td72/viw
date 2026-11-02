@@ -281,32 +281,39 @@ import Testing
 }
 
 @Suite struct ArchiveBrowserTests {
-    @Test func listingPreviewAndExtraction() throws {
+    @Test func treePreviewAndExtraction() throws {
         let a = try ArchiveBrowser(url: try fixture("mixed.zip"))
-        let t = a.table()
-        #expect(t.header == ["Name", "Size", "Packed", "Modified", "Method"])
-        #expect(t.rows.map { $0[0] } == ["deflate.txt", "dir/日本語.txt", "empty.txt", "stored.txt"])
-        #expect(t.rows[3][1] == "12" && t.rows[3][4] == "stored")
-        #expect(t.rows[0][1] == "5000" && t.rows[0][4] == "deflate" && Int(t.rows[0][2])! < 5000)
-        #expect(t.types[1] == .integer)
+        let root = a.root
+        #expect(root.children.map(\.name) == ["dir", "deflate.txt", "empty.txt", "stored.txt"])   // folders first
+        let dir = root.children[0]
+        #expect(dir.isDirectory && dir.path == "dir/" && dir.entry == nil)                       // implied by its file
+        #expect(dir.children.map(\.path) == ["dir/日本語.txt"])
+        #expect(dir.children[0].ancestors.map(\.path) == ["dir/"] && dir.ancestors.isEmpty && dir.children[0].parent === dir)
+        #expect(dir.fileCount == 1 && dir.size == 15)
         #expect(a.entryCount == 4 && a.totalSize == 5000 + 15 + 0 + 12)
-        #expect(a.preview(3) == "stored bytes")
-        #expect(a.preview(1) == "こんにちは")
-        #expect(a.preview(0)?.hasSuffix("\n…") == true)              // longer than the preview window
-        #expect(t.preview?(2) == "")                                  // empty entry: empty text
-        let url = try #require(t.activate?(1))
+        #expect(root.descendants.map(\.path) == ["dir/", "dir/日本語.txt", "deflate.txt", "empty.txt", "stored.txt"])
+        let stored = root.children[3], deflate = root.children[1], empty = root.children[2]
+        #expect(stored.entry?.method == 0 && stored.size == 12)
+        #expect(a.preview(stored) == "stored bytes")
+        #expect(a.preview(dir.children[0]) == "こんにちは")
+        #expect(a.preview(deflate)?.hasSuffix("\n…") == true)                                   // longer than the preview window
+        #expect(a.preview(empty) == "")
+        #expect(a.preview(dir) == nil)
+        let url = try a.extract(dir.children[0])
         #expect(url.lastPathComponent == "日本語.txt" && url.deletingLastPathComponent().lastPathComponent == "dir")
         #expect(try String(contentsOf: url, encoding: .utf8) == "こんにちは")
-        #expect(a.extract(99) == nil)
+        #expect(throws: ZipArchive.Error.self) { try a.extract(dir) }
     }
 
     @Test func binaryEncryptedAndFolders() throws {
         let enc = try ArchiveBrowser(url: try fixture("encrypted.zip"))
-        let t = enc.table()
-        #expect(t.rows.first { $0[0] == "secret.txt" }?[4] == "encrypted")
-        #expect(enc.preview(t.rows.firstIndex { $0[0] == "secret.txt" }!) == nil)
-        #expect(enc.extract(t.rows.firstIndex { $0[0] == "secret.txt" }!) == nil)
+        let secret = try #require(enc.root.children.first { $0.name == "secret.txt" })
+        #expect(secret.entry?.encrypted == true)
+        #expect(enc.preview(secret) == nil)
+        #expect(throws: ZipArchive.Error.self) { try enc.extract(secret) }
         let bad = try ArchiveBrowser(url: try fixture("badcrc.zip"))
-        #expect(bad.preview(bad.names.firstIndex(of: "stored.txt")!) == nil)  // CRC mismatch: nothing shown
+        #expect(enc.root.children.count == 2 && bad.preview(bad.root.children.first { $0.name == "stored.txt" }!) == nil)  // CRC mismatch: nothing shown
+        #expect(ArchiveDocumentView.bytes(0) == "Zero bytes" || ArchiveDocumentView.bytes(0) == "0 bytes")
+        #expect(ArchiveDocumentView.bytes(20480) == "20 KB")
     }
 }

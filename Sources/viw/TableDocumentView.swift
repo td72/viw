@@ -30,7 +30,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     private let searchField = NSSearchField()
     private let footer = NSTextField(labelWithString: "")
     /// xlsx: the open book, its sheet tabs, and the sheets parsed so far (parsing is on demand).
-    private var archive: ArchiveBrowser?  // zip: the entries are the rows
     private var book: SheetSource?   // xlsx workbook or SQLite database: sheets / tables in the bar
     private var sheetIndex = 0
     private var sheetCache: [Int: TableData] = [:]
@@ -59,22 +58,14 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     var view: NSView { root }
     /// Window subtitle for workbooks / databases: the sheet or table name (and its note).
     var status: String? {
-        if let archive {
-            let f = ByteCountFormatter()
-            f.countStyle = .file
-            return "\(archive.entryCount) entries · \(f.string(fromByteCount: Int64(archive.totalSize)))"
-        }
         guard let book, book.sheetNames.indices.contains(sheetIndex) else { return nil }
         let name = book.sheetNames[sheetIndex]
         return book.sheetNote(sheetIndex).map { "\(name) (\($0))" } ?? name
     }
 
     var onOpenFile: ((URL) -> Void)?
-    var onOpenTab: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
-    var helpSections: [KeyHelp.Section] {
-        archive != nil ? [KeyHelp.table, KeyHelp.archive] : book == nil ? [KeyHelp.table] : [KeyHelp.table, KeyHelp.sheets]
-    }
+    var helpSections: [KeyHelp.Section] { book == nil ? [KeyHelp.table] : [KeyHelp.table, KeyHelp.sheets] }
     var commands: ViewerCommands? {
         get { table.commands }
         set {
@@ -244,19 +235,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         case .file(let url):
             if case .workbook = kind { loadBook(url, "xlsx") { try Workbook(url: $0) }; break }
             if case .database = kind { loadBook(url, "sqlite") { try SQLiteDatabase(url: $0) }; break }
-            if case .archive = kind {
-                book = nil
-                do {
-                    let a = try ArchiveBrowser(url: url)
-                    archive = a
-                    data = a.table()
-                } catch {
-                    archive = nil
-                    data = TableData(header: ["Cannot read \(url.lastPathComponent): \(error)"], rows: [], totalRows: 0)
-                }
-                break
-            }
-            archive = nil
             guard let bytes = FileManager.default.contents(atPath: url.path) else {
                 data = TableData(header: ["Cannot read \(url.path)"], rows: [], totalRows: 0)
                 break
@@ -270,7 +248,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
             }
         case .text(let s, _):
             book = nil
-            archive = nil
             data = CSV.table(from: Data(s.utf8), url: URL(fileURLWithPath: "stdin.csv"))
         }
         updateSheetBar()
@@ -292,7 +269,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     /// Open the book and show the sheet that was selected before (a reload keeps the sheet).
     private func loadBook(_ url: URL, _ label: String, _ open: (URL) throws -> SheetSource) {
         let t0 = CFAbsoluteTimeGetCurrent()
-        archive = nil
         sheetCache = [:]
         do {
             let b = try open(url)
@@ -493,12 +469,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
                                     NSRange(location: text.length + valueStart, length: (value as NSString).length)))
                 text.append(line)
             }
-            if let preview = data.preview?(original(row)) { // zip: the start of the entry
-                let mono: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: font.pointSize * 0.9, weight: .regular), .foregroundColor: NSColor.labelColor]
-                text.append(NSAttributedString(string: "\n", attributes: valueAttrs))
-                text.append(NSAttributedString(string: "PREVIEW\n", attributes: keyAttrs))
-                text.append(NSAttributedString(string: preview, attributes: mono))
-            }
             detail.textStorage?.setAttributedString(text)
             fieldIndex = min(fieldIndex, max(0, fieldRanges.count - 1))
             drawFieldCursor()
@@ -550,15 +520,6 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
 
     /// Enter / i / ⌃w w: grid ⇄ pane (opening the pane on the first row if nothing is selected).
     func switchPane() {
-        if root.window?.firstResponder !== detail, let activate = data.activate, table.selectedRow >= 0, table.selectedRow < rowCount {
-            // zip: Enter opens the entry in a new tab (`i` still goes to the pane)
-            if let url = activate(original(table.selectedRow)) { onOpenTab?(url) }
-            return
-        }
-        enterPane()
-    }
-
-    func enterPane() {
         if root.window?.firstResponder === detail {
             columnIndex = fieldIndex // and the grid picks up the pane's field cursor
             focus()
@@ -1070,7 +1031,6 @@ final class PaneCommands: ViewerCommands {
     func clearSelection() { forward.clearSelection() }
     func toggleDetail() { forward.toggleDetail() }
     func switchPane() { forward.switchPane() }
-    func enterPane() { forward.enterPane() }
     func togglePanePosition() { forward.togglePanePosition() }
     func togglePageMode() { forward.togglePageMode() }
     func toggleThumbnails() { forward.toggleThumbnails() }

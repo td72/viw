@@ -3,7 +3,7 @@
 # viw — vim-keyed viewer
 
 A small, fast, native viewer for macOS with vim keybindings. It renders GitHub Flavored Markdown, shows source
-files with syntax highlighting, CSV / TSV, Excel workbooks and SQLite databases as a grid, Word / RTF documents, Jupyter notebooks, zip listings, PDFs and images. It was called `mdv` until
+files with syntax highlighting, CSV / TSV, Excel workbooks and SQLite databases as a grid, Word / RTF documents, Jupyter notebooks, zip archives as a tree, PDFs and images. It was called `mdv` until
 v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 - **Native AppKit** — `NSTextView` + TextKit 1, no WebView, no Electron. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
@@ -111,10 +111,12 @@ kept). `.sqlite` / `.sqlite3` / `.db` (when the file really is SQLite) open in t
 view as a sheet in the bar under the grid: `]` / `[` switch, the status shows the row count, NULL is empty, BLOBs show
 their size, and the first 500,000 rows of each table are loaded.
 
-`.zip` (and `.jar` / `.whl`) opens as a listing of the entries (name, size, packed size, modified, method) in the same
-grid, with the start of a text entry in the detail pane. Enter extracts the selected entry to a temporary folder and
-opens it in a new tab, whatever kind it is (a nested zip included); encrypted entries and zip64 archives are listed but
-cannot be opened. `viw --set-default` leaves `.zip` with Archive Utility unless you name it (`viw --set-default zip`).
+`.zip` (and `.jar` / `.whl`) opens as a tree of the entries with size and date columns and a pane showing the
+selected entry's details and the start of its text. `j` / `k` move, `h` folds a folder (or goes to its parent), `l`
+unfolds (or steps in), Enter extracts the selected file to a temporary folder and opens it in a new tab, whatever
+kind it is (a nested zip included), `/` finds by path, `y` copies the path. Encrypted entries and zip64 archives are
+listed but cannot be opened. `viw --set-default` leaves `.zip` with Archive Utility unless you name it
+(`viw --set-default zip`).
 
 `.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
 kernel's language with `In [n]:` above, outputs below them (text as plain blocks, pictures inline, errors with the terminal
@@ -212,7 +214,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/MediaDocumentView.swift` | `DocumentView` for video / audio: AVPlayerView with vim transport keys |
 | `Sources/viw/CSV.swift` | RFC 4180 parser with delimiter and encoding detection |
 | `Sources/viw/ZipArchive.swift` | dependency-free zip reader (central directory, stored / deflate via Compression, CRC-32) for xlsx |
-| `Sources/viw/Archive.swift` | `ArchiveBrowser`: a zip as a table of entries, text preview, extraction of one entry for a tab |
+| `Sources/viw/ArchiveDocumentView.swift` | `DocumentView` for zip archives: NSOutlineView tree, details / preview pane, find, vim keys |
+| `Sources/viw/Archive.swift` | `ArchiveBrowser` / `ArchiveNode`: a zip as a tree, text preview, extraction of one entry for a tab |
 | `Sources/viw/XLSX.swift` | `Workbook`: sheets / shared strings / styles from the OOXML parts, number-format spelling, byte-level XML scanner |
 | `Sources/viw/Formula.swift` | xlsx formula tokenizer / evaluator (references, arithmetic, 38 functions) |
 | `Sources/viw/SQLite.swift` | `SheetSource` (what the sheet bar switches between) and `SQLiteDatabase` over the system sqlite3 |
