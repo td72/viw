@@ -28,6 +28,7 @@ enum FileKind {
     case jsonl        // JSON Lines: one pretty-printed record per block
     case table        // CSV / TSV: grid view
     case workbook     // xlsx / xlsm: grid view with a sheet bar
+    case database     // SQLite: grid view, one sheet per table / view
     case pdf          // PDFKit
     case image        // png / jpg / gif / heic / …
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
@@ -49,6 +50,10 @@ enum FileKind {
         if ["jsonl", "ndjson"].contains(ext) { return .jsonl }
         if ["csv", "tsv", "tab"].contains(ext) { return .table }
         if ["xlsx", "xlsm"].contains(ext) { return .workbook }
+        if SQLiteDatabase.extensions.contains(ext) {
+            // ".db" is used for all sorts of things: only a real SQLite header counts.
+            return ext != "db" || SQLiteDatabase.isDatabase(url) ? .database : .plain
+        }
         if ext == "pdf" { return .pdf }
         if RichDocument.extensions.contains(ext) { return .document }
         if ext == "ipynb" { return .notebook }
@@ -205,7 +210,7 @@ final class DocumentController: NSObject, ViewerCommands {
     /// Which `DocumentView` draws `kind`; the same class is reused across loads.
     private static func viewType(for kind: FileKind) -> DocumentView.Type {
         switch kind {
-        case .table, .workbook: return TableDocumentView.self
+        case .table, .workbook, .database: return TableDocumentView.self
         case .pdf: return PDFDocumentView.self
         case .image: return ImageDocumentView.self
         case .video, .audio: return MediaDocumentView.self

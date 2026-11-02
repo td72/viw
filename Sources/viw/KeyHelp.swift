@@ -58,8 +58,8 @@ enum KeyHelp {
         Entry("j / k   h / l   s  (in the pane)", "next / previous field   next / previous row   sort by the field"),
     ])
 
-    static let sheets = Section(title: "Sheets (xlsx)", entries: [
-        Entry("] / [   ⌘] / ⌘[", "next / previous sheet (3]: three ahead; wraps)"),
+    static let sheets = Section(title: "Sheets (xlsx) / tables (SQLite)", entries: [
+        Entry("] / [   ⌘] / ⌘[", "next / previous sheet or table (3]: three ahead; wraps)"),
         Entry("click a sheet", "in the bar under the grid"),
     ])
 

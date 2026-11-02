@@ -3,7 +3,7 @@
 # viw — vim-keyed viewer
 
 A small, fast, native viewer for macOS with vim keybindings. It renders GitHub Flavored Markdown, shows source
-files with syntax highlighting, CSV / TSV and Excel workbooks as a grid, Word / RTF documents, Jupyter notebooks, PDFs and images. It was called `mdv` until
+files with syntax highlighting, CSV / TSV, Excel workbooks and SQLite databases as a grid, Word / RTF documents, Jupyter notebooks, PDFs and images. It was called `mdv` until
 v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 - **Native AppKit** — `NSTextView` + TextKit 1, no WebView, no Electron. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
@@ -107,7 +107,11 @@ step one frame; a hidden tab stops the timer.
 
 `.docx` is converted to Markdown and rendered like a `.md` file: headings, bold / italic / strikethrough, lists,
 tables, hyperlinks, pictures, block quotes and monospace runs as code (colours, underline and page layout are not
-kept). `.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
+kept). `.sqlite` / `.sqlite3` / `.db` (when the file really is SQLite) open in the same grid, read-only, with every table and
+view as a sheet in the bar under the grid: `]` / `[` switch, the status shows the row count, NULL is empty, BLOBs show
+their size, and the first 500,000 rows of each table are loaded.
+
+`.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
 kernel's language with `In [n]:` above, outputs below them (text as plain blocks, pictures inline, errors with the terminal
 colours stripped, HTML-only outputs as a note), raw cells as written. `.doc` / `.odt` and `.rtf` / `.rtfd` open through the importers macOS ships with, as formatted text with the
 document's own fonts (scaled so a 12 pt body matches the Markdown body) and black-on-white recoloured for the current
@@ -197,13 +201,19 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/ViewerWindow.swift` | window, in-window tab bar, tab switching / closing |
 | `Sources/viw/Document.swift` | `Source` / `FileKind`, the `DocumentView` protocol, and `DocumentController` (one tab: file, theme, watcher, vim commands) |
 | `Sources/viw/TextDocumentView.swift` | `DocumentView` for text: rendering, async highlighting, link handling, scrolling, find, snapshot |
-| `Sources/viw/TableDocumentView.swift` | `DocumentView` for tables (CSV / xlsx): NSTableView grid, row cursor, search bar, TSV copy, sheet bar |
+| `Sources/viw/TableDocumentView.swift` | `DocumentView` for tables (CSV / xlsx / SQLite): NSTableView grid, row cursor, search bar, TSV copy, sheet bar |
 | `Sources/viw/PDFDocumentView.swift` | `DocumentView` for PDFs: PDFKit, find, zoom, rotate |
 | `Sources/viw/ImageDocumentView.swift` | `DocumentView` for images: fit / zoom / rotate, ImageIO frame playback for animated images |
 | `Sources/viw/MediaDocumentView.swift` | `DocumentView` for video / audio: AVPlayerView with vim transport keys |
 | `Sources/viw/CSV.swift` | RFC 4180 parser with delimiter and encoding detection |
 | `Sources/viw/ZipArchive.swift` | dependency-free zip reader (central directory, stored / deflate via Compression, CRC-32) for xlsx |
 | `Sources/viw/XLSX.swift` | `Workbook`: sheets / shared strings / styles from the OOXML parts, number-format spelling, byte-level XML scanner |
+| `Sources/viw/Formula.swift` | xlsx formula tokenizer / evaluator (references, arithmetic, 38 functions) |
+| `Sources/viw/SQLite.swift` | `SheetSource` (what the sheet bar switches between) and `SQLiteDatabase` over the system sqlite3 |
+| `Sources/viw/XMLTree.swift` | small XMLParser-backed DOM for the OOXML parts read whole (Word body) |
+| `Sources/viw/DOCX.swift` | Word body → Markdown (headings, runs, lists, tables, links, pictures) |
+| `Sources/viw/Notebook.swift` | Jupyter notebook → Markdown (cells, outputs, pictures) |
+| `Sources/viw/RichDocument.swift` | doc / odt / rtf / rtfd through NSAttributedString's importers, restyled for the theme |
 | `Sources/viw/VimKeys.swift` | `ViewerCommands` and the vim key map shared by the text and table views |
 | `Sources/viw/KeyHelp.swift` | the key bindings as data (`?` overlay, Help menu, `viw -h`) and the overlay view |
 | `Sources/viw/Toast.swift` | the short-lived "Copied …" pill |

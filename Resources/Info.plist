@@ -75,6 +75,12 @@
             <array><string>xlsx</string><string>xlsm</string></array>
         </dict>
         <dict>
+            <key>CFBundleTypeName</key><string>SQLite Database</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>CFBundleTypeExtensions</key><array><string>sqlite</string><string>sqlite3</string><string>db</string></array>
+        </dict>
+        <dict>
             <key>CFBundleTypeName</key><string>Word Document</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>
