@@ -94,7 +94,10 @@ enum PPTX {
             if let notesPart = rels.values.first(where: { $0.contains("/notesSlides/") }), let lines = notes(in: notesPart), !lines.isEmpty {
                 out.append("> **Notes**")
                 out.append(">")
-                for l in lines { out.append("> " + l.replacingOccurrences(of: "\n", with: "\n> ")) }
+                for (i, l) in lines.enumerated() { // one quoted paragraph per note paragraph
+                    if i > 0 { out.append(">") }
+                    out.append("> " + l.replacingOccurrences(of: "\n", with: "\n> "))
+                }
                 out.append("")
             }
         }

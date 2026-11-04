@@ -230,7 +230,7 @@ import Testing
         let r = try PPTX.markdown(url: try fixture("sample.pptx"))
         let md = r.markdown
         // Presentation order comes from p:sldIdLst (the title slide is slide10.xml).
-        #expect(md.hasPrefix("## Slide 1: viw sample deck\n\nSlides as text — サブタイトル\n\n> **Notes**\n>\n> Speaker notes for the title slide.\n> Second line of notes.\n\n---\n\n## Slide 2: Agenda\n"))
+        #expect(md.hasPrefix("## Slide 1: viw sample deck\n\nSlides as text — サブタイトル\n\n> **Notes**\n>\n> Speaker notes for the title slide.\n>\n> Second line of notes.\n\n---\n\n## Slide 2: Agenda\n"))
         #expect(md.contains("- First point\n- Second point\n  - Nested under second\n    - Deeper still\n- Third point \\*with\\* markdown chars\n- 日本語の箇条書き\n"))
         #expect(md.contains("- **bold**, *italic* and `code` and ~~gone~~\n- [Project page](https://github.com/td72/viw)\n- line one\\\nline two after break\n- Shown on slide 3\n"))
         #expect(md.contains("| Region | Units | Revenue |\n| --- | --- | --- |\n| East | 120 | 18,000 |\n| West | 80 | 12,500 |\n| Total \\| all |  | 30,500 |\n"))
