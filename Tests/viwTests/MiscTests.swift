@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Markdown
 import Testing
 @testable import viw
 
@@ -147,6 +148,14 @@ import Testing
         #expect({ if case .audio = kind("a.flac") { return true } else { return false } }())
         #expect({ if case .plain = kind("a.unknownext") { return true } else { return false } }())
         #expect(!kind("a.unknownext").isViewable)
+    }
+}
+
+@Suite struct RendererTests {
+    @Test func linkShowsItsTextNotTheURL() {
+        let md = "See [Project page](https://github.com/td72/viw) and [](https://example.com).\n"
+        let out = MarkdownRenderer(theme: Theme(), baseURL: nil).render(Markdown.Document(parsing: md)).string
+        #expect(out.contains("See Project page and https://example.com."))
     }
 }
 

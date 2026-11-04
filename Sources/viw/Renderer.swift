@@ -332,7 +332,8 @@ final class MarkdownRenderer {
         case let l as Link:
             var n = st
             n.link = resolve(l.destination)
-            if l.children.underestimatedCount == 0, let d = l.destination {
+            // `MarkupChildren` is a plain Sequence: `underestimatedCount` is always 0, so this used to show every link as its URL.
+            if l.childCount == 0, let d = l.destination {
                 s.append(text(d, n))
             } else {
                 for c in l.children { inline(c, n, into: s) }
