@@ -35,6 +35,7 @@ enum FileKind {
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
     case audio        // m4a / mp3 / wav / aiff / flac (AVKit)
     case notebook     // ipynb: converted to Markdown (Notebook)
+    case presentation // pptx: converted to Markdown (PPTX), one section per slide
     case document     // docx / doc / rtf / rtfd / odt: NSAttributedString's importers, shown in the text view
     case plain        // unknown extension: one monochrome code block
 
@@ -59,6 +60,7 @@ enum FileKind {
         if ArchiveBrowser.extensions.contains(ext) { return .archive }
         if RichDocument.extensions.contains(ext) { return .document }
         if ext == "ipynb" { return .notebook }
+        if ext == "pptx" { return .presentation }
         if imageExtensions.contains(ext) { return .image }
         if videoExtensions.contains(ext) { return .video }
         if audioExtensions.contains(ext) { return .audio }

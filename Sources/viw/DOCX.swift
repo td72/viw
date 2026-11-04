@@ -27,6 +27,9 @@ enum DOCX {
         return Result(markdown: md + "\n", mediaDirectory: c.mediaDirectory)
     }
 
+    /// Markdown-escaped text (also used by the pptx converter).
+    static func escape(_ s: String) -> String { Converter.escape(s) }
+
     /// `Id` → `Target` (URLs for hyperlinks, `media/image1.png` for pictures).
     static func relationships(_ root: XMLTree) -> [String: String] {
         var map: [String: String] = [:]
@@ -223,7 +226,7 @@ enum DOCX {
             let mono = font.contains("courier") || font.contains("consolas") || font.contains("mono") || font.contains("menlo")
             if mono { return "`" + text.replacingOccurrences(of: "`", with: "'") + "`" }
             let leading = text.prefix { $0 == " " }, trailing = text.reversed().prefix { $0 == " " }
-            var core = escape(String(text.dropFirst(leading.count).dropLast(trailing.count)))
+            var core = Self.escape(String(text.dropFirst(leading.count).dropLast(trailing.count)))
             if core.isEmpty { return text }
             if rPr?["w:b"] != nil, rPr?["w:b"]?.attributes["w:val"] != "0", rPr?["w:b"]?.attributes["w:val"] != "false" { core = "**\(core)**" }
             if rPr?["w:i"] != nil, rPr?["w:i"]?.attributes["w:val"] != "0", rPr?["w:i"]?.attributes["w:val"] != "false" { core = "*\(core)*" }
@@ -261,7 +264,7 @@ enum DOCX {
             return "![\(alt)](\(file.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.path))"
         }
 
-        private func escape(_ s: String) -> String {
+        fileprivate static func escape(_ s: String) -> String {
             var out = ""
             for ch in s {
                 if "\\*_`[]<>~#|".contains(ch) { out.append("\\") }

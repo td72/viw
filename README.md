@@ -118,7 +118,9 @@ kind it is (a nested zip included), `/` finds by path, `y` copies the path. Encr
 listed but cannot be opened. `viw --set-default` leaves `.zip` with Archive Utility unless you name it
 (`viw --set-default zip`).
 
-`.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
+`.pptx` is converted the same way, one section per slide: `## Slide N: title`, the body placeholders as (nested)
+bullet lists, text boxes as paragraphs, tables, pictures, hyperlinks, and the speaker notes as a quote under the slide
+(layout, shapes and colours are not kept; charts and SmartArt leave a note). `.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
 kernel's language with `In [n]:` above, outputs below them (text as plain blocks, pictures inline, errors with the terminal
 colours stripped, HTML-only outputs as a note), raw cells as written. `.doc` / `.odt` and `.rtf` / `.rtfd` open through the importers macOS ships with, as formatted text with the
 document's own fonts (scaled so a 12 pt body matches the Markdown body) and black-on-white recoloured for the current
@@ -221,6 +223,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/SQLite.swift` | `SheetSource` (what the sheet bar switches between) and `SQLiteDatabase` over the system sqlite3 |
 | `Sources/viw/XMLTree.swift` | small XMLParser-backed DOM for the OOXML parts read whole (Word body) |
 | `Sources/viw/DOCX.swift` | Word body → Markdown (headings, runs, lists, tables, links, pictures) |
+| `Sources/viw/PPTX.swift` | PowerPoint slides → Markdown (one section per slide: title, bullets, tables, pictures, notes) |
 | `Sources/viw/Notebook.swift` | Jupyter notebook → Markdown (cells, outputs, pictures) |
 | `Sources/viw/RichDocument.swift` | doc / odt / rtf / rtfd through NSAttributedString's importers, restyled for the theme |
 | `Sources/viw/VimKeys.swift` | `ViewerCommands` and the vim key map shared by the text and table views |
@@ -236,7 +239,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/FileWatcher.swift` | kqueue file watcher that survives atomic saves |
 
 Debug helpers: `viw --unzip archive.zip [entry]` lists an archive's entries or writes one to stdout; `viw --xlsx book.xlsx [N | name]`
-lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula). `viw --markdown file.docx|file.ipynb`
+lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula). `viw --markdown file.docx|file.pptx|file.ipynb`
 prints the Markdown a Word file or notebook is rendered from.
 Environment variables (wrapped by `mise r snapshot`): `VIW_TIMING=1` prints parse / render / layout /
 highlight-query times and scroll offsets to stderr, `VIW_SNAPSHOT=out.png` renders the whole document to a PNG and exits (`VIW_SNAPSHOT_WIDTH=700`,
