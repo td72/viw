@@ -4,7 +4,9 @@ import ImageIO
 /// `DocumentView` for images: an NSImageView in a scroll view, fitted to the width (never
 /// enlarged), centered; `+` / `-` zoom, `=` refits, `h` / `l` / `j` / `k` scroll when larger
 /// than the window. Animated GIF / WebP / APNG / HEICS play frame by frame from ImageIO so
-/// that rotation and zoom apply to every frame; Space pauses, `n` / `N` step.
+/// that rotation and zoom apply to every frame; Space pauses, `n` / `N` step. draw.io files
+/// are drawn by `Drawio` into a vector image and shown the same way, one page at a time
+/// (`]` / `[` switch pages).
 final class ImageDocumentView: NSObject, DocumentView {
     private let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 880, height: 960))
     private let canvas = VimImageCanvas()
@@ -15,6 +17,11 @@ final class ImageDocumentView: NSObject, DocumentView {
     private var fit = true
     private var turns = 0 // quarter turns clockwise
     private let badge = StatusBadge(frame: .zero)
+
+    // draw.io: the pages of the file; `pageIndex` is the one shown.
+    private var pages: [Drawio.Page] = []
+    private var pageIndex = 0
+    private var loadError: String?
 
     // Animation: the ImageIO source stays open; frames are decoded as they come up and kept
     // while the whole sequence fits a memory budget.
@@ -36,8 +43,10 @@ final class ImageDocumentView: NSObject, DocumentView {
         set { canvas.commands = newValue }
     }
     var status: String? {
+        if let loadError { return loadError }
         guard let image else { return nil }
         var s = "\(Int(image.size.width)) × \(Int(image.size.height)) · \(Int((scale * 100).rounded()))%"
+        if pages.count > 1 { s = "\(pages[pageIndex].name) · \(pageIndex + 1) / \(pages.count) · " + s }
         if animated { s += " · \(frameIndex + 1) / \(frameCount)" + (playing ? "" : " ⏸") }
         return s
     }
@@ -65,7 +74,7 @@ final class ImageDocumentView: NSObject, DocumentView {
     deinit { timer?.invalidate() }
 
     func focus() { scrollView.window?.makeFirstResponder(canvas) }
-    var helpSections: [KeyHelp.Section] { [KeyHelp.image] }
+    var helpSections: [KeyHelp.Section] { pages.isEmpty ? [KeyHelp.image] : [KeyHelp.image, KeyHelp.diagram] }
 
     func load(source: Source, kind: FileKind, theme: Theme, preserveScroll: Bool) {
         timer?.invalidate()
@@ -73,8 +82,14 @@ final class ImageDocumentView: NSObject, DocumentView {
         frames = nil
         frameDelays = []
         frameCache = [:]
+        loadError = nil
         let keepFrame = preserveScroll ? frameIndex : 0
         frameIndex = 0
+        if case .diagram = kind {
+            loadDiagram(source, keepPage: preserveScroll)
+            return
+        }
+        pages = []
         guard let url = source.url, let img = NSImage(contentsOf: url) else { original = nil; image = nil; imageView.image = nil; return }
         original = img
         if let src = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(src) > 1 {
@@ -91,6 +106,33 @@ final class ImageDocumentView: NSObject, DocumentView {
         }
         applyRotation()
         if playing { scheduleNextFrame() }
+    }
+
+    // MARK: - draw.io pages
+
+    private func loadDiagram(_ source: Source, keepPage: Bool) {
+        playing = false
+        do {
+            guard let url = source.url else { throw Drawio.Error(description: "no file") }
+            pages = try Drawio.parse(url: url)
+            pageIndex = keepPage ? min(pageIndex, pages.count - 1) : 0
+            original = Drawio.render(pages[pageIndex])
+        } catch {
+            pages = []
+            original = nil
+            loadError = "\(error)"
+        }
+        applyRotation()
+    }
+
+    /// `]` / `[`: the next / previous page of a draw.io file (wraps).
+    func selectSheet(offset: Int) {
+        guard pages.count > 1 else { return }
+        let n = pages.count
+        pageIndex = ((pageIndex + offset) % n + n) % n
+        original = Drawio.render(pages[pageIndex])
+        applyRotation()
+        scrollToTop()
     }
 
     // MARK: - Animation
@@ -171,7 +213,7 @@ final class ImageDocumentView: NSObject, DocumentView {
     }
 
     private func applyRotation() {
-        guard let original else { return }
+        guard let original else { image = nil; imageView.image = nil; badge.update(status ?? "", in: scrollView); onStatusChange?(); return }
         if turns == 0 {
             image = original
         } else {

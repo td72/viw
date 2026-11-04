@@ -32,6 +32,7 @@ enum FileKind {
     case archive      // zip: a tree of the entries, Enter opens one in a tab
     case pdf          // PDFKit
     case image        // png / jpg / gif / heic / …
+    case diagram      // drawio / dio: draw.io pages drawn by Drawio, shown like an image
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
     case audio        // m4a / mp3 / wav / aiff / flac (AVKit)
     case notebook     // ipynb: converted to Markdown (Notebook)
@@ -62,6 +63,7 @@ enum FileKind {
         if ext == "ipynb" { return .notebook }
         if ext == "pptx" { return .presentation }
         if imageExtensions.contains(ext) { return .image }
+        if ext == "drawio" || ext == "dio" { return .diagram }
         if videoExtensions.contains(ext) { return .video }
         if audioExtensions.contains(ext) { return .audio }
         if ext.isEmpty {
@@ -222,7 +224,7 @@ final class DocumentController: NSObject, ViewerCommands {
         case .table, .workbook, .database: return TableDocumentView.self
         case .archive: return ArchiveDocumentView.self
         case .pdf: return PDFDocumentView.self
-        case .image: return ImageDocumentView.self
+        case .image, .diagram: return ImageDocumentView.self
         case .video, .audio: return MediaDocumentView.self
         default: return TextDocumentView.self
         }
