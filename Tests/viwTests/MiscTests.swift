@@ -142,6 +142,7 @@ import Testing
         #expect({ if case .document = kind("a.doc") { return true } else { return false } }())
         #expect({ if case .document = kind("a.odt") { return true } else { return false } }())
         #expect({ if case .notebook = kind("a.ipynb") { return true } else { return false } }())
+        #expect({ if case .presentation = kind("a.pptx") { return true } else { return false } }())
         #expect({ if case .image = kind("a.webp") { return true } else { return false } }())
         #expect({ if case .image = kind("a.svg") { return true } else { return false } }())
         #expect({ if case .video = kind("a.mkv") { return true } else { return false } }())
@@ -221,6 +222,36 @@ import Testing
         let md = c.out.joined(separator: "\n")
         #expect(md.contains("\\- not a list \\*nor emphasis\\* \\#tag \\<b\\>"))
         #expect(md.contains("**bold** plain\\\nnext\\_line"))
+    }
+}
+
+@Suite struct PPTXTests {
+    @Test func convertsToMarkdown() throws {
+        let r = try PPTX.markdown(url: try fixture("sample.pptx"))
+        let md = r.markdown
+        // Presentation order comes from p:sldIdLst (the title slide is slide10.xml).
+        #expect(md.hasPrefix("## Slide 1: viw sample deck\n\nSlides as text — サブタイトル\n\n> **Notes**\n>\n> Speaker notes for the title slide.\n>\n> Second line of notes.\n\n---\n\n## Slide 2: Agenda\n"))
+        #expect(md.contains("- First point\n- Second point\n  - Nested under second\n    - Deeper still\n- Third point \\*with\\* markdown chars\n- 日本語の箇条書き\n"))
+        #expect(md.contains("- **bold**, *italic* and `code` and ~~gone~~\n- [Project page](https://github.com/td72/viw)\n- line one\\\nline two after break\n- Shown on slide 3\n"))
+        #expect(md.contains("| Region | Units | Revenue |\n| --- | --- | --- |\n| East | 120 | 18,000 |\n| West | 80 | 12,500 |\n| Total \\| all |  | 30,500 |\n"))
+        #expect(md.contains("## Slide 5\n\n![A blue rectangle]("))                      // no title placeholder, alt from descr
+        #expect(md.contains("A caption in a plain text box\n\n- Manual bullet\n"))   // text box: plain unless buChar
+        #expect(md.contains("1. Install\n2. Open a file\n3. Press ?\n\nNo bullet here\n"))
+        #expect(md.contains("## Slide 8: Grouped\n\nInside a group\n\nAlso grouped\n"))
+        #expect(!md.contains("Footer text"))                                        // ftr / sldNum placeholders are skipped
+        #expect(md.hasSuffix("## Slide 10\n\nLast slide, no title placeholder\n\n> **Notes**\n>\n> Final notes.\n"))
+        #expect(md.components(separatedBy: "\n## Slide ").count == 10)
+        let dir = try #require(r.mediaDirectory)
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("image1.png").path))
+    }
+
+    @Test func pathsAndOrder() throws {
+        #expect(PPTX.resolve("../media/image1.png", relativeTo: "ppt/slides/") == "ppt/media/image1.png")
+        #expect(PPTX.resolve("/ppt/media/a.png", relativeTo: "ppt/slides/") == "ppt/media/a.png")
+        #expect(PPTX.resolve("slides/slide1.xml", relativeTo: "ppt/") == "ppt/slides/slide1.xml")
+        #expect(PPTX.directory(of: "ppt/slides/slide1.xml") == "ppt/slides/")
+        #expect(try PPTX.slideParts(ZipArchive(url: try fixture("sample.pptx"))).prefix(2) == ["ppt/slides/slide10.xml", "ppt/slides/slide1.xml"])
+        #expect(throws: (any Error).self) { try PPTX.markdown(url: try fixture("mixed.zip")) }
     }
 }
 

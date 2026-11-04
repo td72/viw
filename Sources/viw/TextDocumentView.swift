@@ -84,7 +84,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         let (text, baseURL): (String, URL?)
         switch source {
         case .file(let url) where Converted.handles(url):
-            // Word / notebook: converted to Markdown; pictures live in a temporary directory.
+            // Word / PowerPoint / notebook: converted to Markdown; pictures live in a temporary directory.
             do {
                 let r = try Converted.markdown(url: url)
                 text = r.markdown
@@ -169,7 +169,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             if records.count < all.count { truncated = (records.count, all.count) }
             attributed.append(renderer.renderCodeBlocks(records, language: "json", boxed: records.count <= 300))
             codeBlocks = renderer.codeBlocks
-        case .plain, .document, .notebook, .table, .workbook, .database, .archive, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
+        case .plain, .document, .notebook, .presentation, .table, .workbook, .database, .archive, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
             attributed.append(renderer.renderCode(clamp(text), language: nil))
         }
         if let t = truncated {
@@ -432,14 +432,15 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     }
 }
 
-/// Files that are read as Markdown after a conversion (Word, Jupyter).
+/// Files that are read as Markdown after a conversion (Word, PowerPoint, Jupyter).
 enum Converted {
-    static func handles(_ url: URL) -> Bool { ["docx", "ipynb"].contains(url.pathExtension.lowercased()) }
+    static func handles(_ url: URL) -> Bool { ["docx", "pptx", "ipynb"].contains(url.pathExtension.lowercased()) }
 
     static func markdown(url: URL) throws -> (markdown: String, mediaDirectory: URL?) {
         switch url.pathExtension.lowercased() {
         case "docx": let r = try DOCX.markdown(url: url); return (r.markdown, r.mediaDirectory)
         case "ipynb": let r = try Notebook.markdown(url: url); return (r.markdown, r.mediaDirectory)
+        case "pptx": let r = try PPTX.markdown(url: url); return (r.markdown, r.mediaDirectory)
         default: throw Notebook.Error(description: "no conversion for \(url.lastPathComponent)")
         }
     }
