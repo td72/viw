@@ -29,6 +29,7 @@ enum FileKind {
     case table        // CSV / TSV: grid view
     case workbook     // xlsx / xlsm: grid view with a sheet bar
     case database     // SQLite: grid view, one sheet per table / view
+    case archive      // zip: a tree of the entries, Enter opens one in a tab
     case pdf          // PDFKit
     case image        // png / jpg / gif / heic / …
     case video        // mp4 / mov / m4v (AVKit); mkv / webm / avi get a note
@@ -55,6 +56,7 @@ enum FileKind {
             return ext != "db" || SQLiteDatabase.isDatabase(url) ? .database : .plain
         }
         if ext == "pdf" { return .pdf }
+        if ArchiveBrowser.extensions.contains(ext) { return .archive }
         if RichDocument.extensions.contains(ext) { return .document }
         if ext == "ipynb" { return .notebook }
         if imageExtensions.contains(ext) { return .image }
@@ -85,6 +87,8 @@ protocol DocumentView: AnyObject {
     var view: NSView { get }
     /// Tells the controller what to do with a file link the user clicked inside the content.
     var onOpenFile: ((URL) -> Void)? { get set }
+    /// Open `url` in a new tab (zip entries); views that never do so keep the default.
+    var onOpenTab: ((URL) -> Void)? { get set }
     /// Receiver of the vim keys typed into the content.
     var commands: ViewerCommands? { get set }
     /// Extra for the window subtitle ("3 / 12" pages, image size); `onStatusChange` fires when it changes.
@@ -146,6 +150,8 @@ protocol DocumentView: AnyObject {
 }
 
 extension DocumentView {
+    var onOpenTab: ((URL) -> Void)? { get { nil } set {} }
+
     var status: String? { nil }
     func zoomView(_ delta: Int) -> Bool { false }
     func resetZoomView() -> Bool { false }
@@ -203,6 +209,7 @@ final class DocumentController: NSObject, ViewerCommands {
 
     private func bind(_ v: DocumentView) {
         v.onOpenFile = { [weak self] url in self?.open(url) }
+        v.onOpenTab = { [weak self] url in self?.host?.open([url]) }
         v.onStatusChange = { [weak self] in self.map { $0.host?.documentDidChangeTitle($0) } }
         v.commands = self
     }
@@ -211,6 +218,7 @@ final class DocumentController: NSObject, ViewerCommands {
     private static func viewType(for kind: FileKind) -> DocumentView.Type {
         switch kind {
         case .table, .workbook, .database: return TableDocumentView.self
+        case .archive: return ArchiveDocumentView.self
         case .pdf: return PDFDocumentView.self
         case .image: return ImageDocumentView.self
         case .video, .audio: return MediaDocumentView.self

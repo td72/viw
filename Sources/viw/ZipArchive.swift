@@ -7,7 +7,7 @@ import Foundation
 /// decompressed on request.
 struct ZipArchive {
     enum Error: Swift.Error, CustomStringConvertible {
-        case notAZip, truncated, zip64Unsupported, unsupportedMethod(UInt16), entryNotFound(String), badData(String)
+        case notAZip, truncated, zip64Unsupported, unsupportedMethod(UInt16), entryNotFound(String), badData(String), encrypted(String)
 
         var description: String {
             switch self {
@@ -17,6 +17,7 @@ struct ZipArchive {
             case .unsupportedMethod(let m): return "unsupported zip compression method \(m)"
             case .entryNotFound(let n): return "no \(n) in the archive"
             case .badData(let n): return "\(n) is corrupt (CRC mismatch)"
+            case .encrypted(let n): return "\(n) is encrypted"
             }
         }
     }
@@ -28,6 +29,8 @@ struct ZipArchive {
         let uncompressedSize: Int
         let crc32: UInt32
         let localHeaderOffset: Int
+        let modified: Date?       // from the DOS date / time fields (local time, 2 s resolution)
+        let encrypted: Bool       // general-purpose flag bit 0: traditional or AES encryption
     }
 
     private let bytes: Data
@@ -48,6 +51,7 @@ struct ZipArchive {
     /// The decompressed bytes of `name` (as the central directory spells it, e.g. "xl/workbook.xml").
     func data(for name: String) throws -> Data {
         guard let e = entries[name] else { throw Error.entryNotFound(name) }
+        if e.encrypted { throw Error.encrypted(name) }
         // Local header: signature(4) ver(2) flags(2) method(2) time(2) date(2) crc(4) csize(4) usize(4) nameLen(2) extraLen(2)
         let h = e.localHeaderOffset
         guard h + 30 <= bytes.count, u32(h) == 0x04034B50 else { throw Error.truncated }
@@ -104,7 +108,9 @@ struct ZipArchive {
             // signature(4) verMade(2) verNeed(2) flags(2) method(2) time(2) date(2) crc(4) csize(4) usize(4)
             // nameLen(2) extraLen(2) commentLen(2) disk(2) intAttr(2) extAttr(4) localOffset(4) name extra comment
             guard p + 46 <= d.count, le32(d, p) == 0x02014B50 else { throw Error.truncated }
+            let flags = le16(d, p + 8)
             let method = le16(d, p + 10)
+            let modified = dosDate(time: le16(d, p + 12), date: le16(d, p + 14))
             let crc = le32(d, p + 16)
             let csize = Int(le32(d, p + 20))
             let usize = Int(le32(d, p + 24))
@@ -113,10 +119,24 @@ struct ZipArchive {
             if csize == 0xFFFF_FFFF || usize == 0xFFFF_FFFF || local == 0xFFFF_FFFF { throw Error.zip64Unsupported }
             guard p + 46 + nameLen <= d.count else { throw Error.truncated }
             let name = String(decoding: d[(p + 46)..<(p + 46 + nameLen)], as: UTF8.self)
-            entries[name] = Entry(name: name, method: method, compressedSize: csize, uncompressedSize: usize, crc32: crc, localHeaderOffset: local)
+            entries[name] = Entry(name: name, method: method, compressedSize: csize, uncompressedSize: usize, crc32: crc, localHeaderOffset: local,
+                                  modified: modified, encrypted: flags & 1 == 1)
             p += 46 + nameLen + extraLen + commentLen
         }
         return entries
+    }
+
+    /// MS-DOS date (bits: year-1980 ×7, month ×4, day ×5) and time (hour ×5, minute ×6, second/2 ×5).
+    static func dosDate(time: UInt16, date: UInt16) -> Date? {
+        guard date != 0 else { return nil }
+        var c = DateComponents()
+        c.year = 1980 + Int(date >> 9)
+        c.month = Int((date >> 5) & 0xF)
+        c.day = Int(date & 0x1F)
+        c.hour = Int(time >> 11)
+        c.minute = Int((time >> 5) & 0x3F)
+        c.second = Int(time & 0x1F) * 2
+        return Calendar(identifier: .gregorian).date(from: c)
     }
 
     private func u16(_ at: Int) -> UInt16 { Self.le16(bytes, at) }

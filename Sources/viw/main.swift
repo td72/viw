@@ -190,7 +190,7 @@ if args.contains("-h") || args.contains("--help") {
     keys (`?` in the app shows the ones for the current view):
 
     """)
-    print(KeyHelp.plainText(KeyHelp.common + [KeyHelp.text, KeyHelp.table, KeyHelp.sheets, KeyHelp.pdf, KeyHelp.image, KeyHelp.media]))
+    print(KeyHelp.plainText(KeyHelp.common + [KeyHelp.text, KeyHelp.table, KeyHelp.sheets, KeyHelp.archive, KeyHelp.pdf, KeyHelp.image, KeyHelp.media]))
     print("    A second `viw` hands its files to the running instance (they open as tabs).")
     exit(0)
 }
@@ -264,9 +264,9 @@ if args.first == "--set-default" {
         exit(1)
     }
     var exts = args.dropFirst().map { $0.hasPrefix(".") ? String($0.dropFirst()).lowercased() : $0.lowercased() }
-    // Web pages stay with the browser unless asked for by name.
-    let browserTypes: Set<String> = ["html", "htm"]
-    if exts.isEmpty { exts = types.flatMap { $0["CFBundleTypeExtensions"] as? [String] ?? [] }.filter { !browserTypes.contains($0) } }
+    // Web pages stay with the browser and zips with Archive Utility unless asked for by name.
+    let leaveAlone: Set<String> = ["html", "htm", "zip"]
+    if exts.isEmpty { exts = types.flatMap { $0["CFBundleTypeExtensions"] as? [String] ?? [] }.filter { !leaveAlone.contains($0) } }
     let lock = NSLock()
     var errors: [String: String] = [:]
     let group = DispatchGroup()
