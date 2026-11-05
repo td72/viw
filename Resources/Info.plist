@@ -51,6 +51,12 @@
             </array>
         </dict>
         <dict>
+            <key>CFBundleTypeName</key><string>draw.io Diagram</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>CFBundleTypeExtensions</key><array><string>drawio</string><string>dio</string></array>
+        </dict>
+        <dict>
             <key>CFBundleTypeName</key><string>Delimited Text</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>

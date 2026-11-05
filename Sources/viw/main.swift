@@ -181,16 +181,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 let args = Array(CommandLine.arguments.dropFirst())
 if args.contains("-h") || args.contains("--help") {
     print("""
-    viw — vim-keyed viewer (markdown, code, JSON, CSV, xlsx, PDF, images)
+    viw — vim-keyed viewer (markdown, code, JSON, CSV, xlsx, PDF, images, draw.io)
 
-    usage: viw [FILE ...]        open files (markdown, source code, .json, .csv / .tsv, .xlsx, .pdf, images, video / audio); none: an empty window
+    usage: viw [FILE ...]        open files (markdown, source code, .json, .csv / .tsv, .xlsx, .pdf, images, .drawio, video / audio); none: an empty window
            cat FILE | viw        read markdown from stdin
            viw --set-default     make viw the default app for its file types (or: --set-default md csv)
 
     keys (`?` in the app shows the ones for the current view):
 
     """)
-    print(KeyHelp.plainText(KeyHelp.common + [KeyHelp.text, KeyHelp.table, KeyHelp.sheets, KeyHelp.archive, KeyHelp.pdf, KeyHelp.image, KeyHelp.media]))
+    print(KeyHelp.plainText(KeyHelp.common + [KeyHelp.text, KeyHelp.table, KeyHelp.sheets, KeyHelp.archive, KeyHelp.pdf, KeyHelp.image, KeyHelp.diagram, KeyHelp.media]))
     print("    A second `viw` hands its files to the running instance (they open as tabs).")
     exit(0)
 }
@@ -217,6 +217,35 @@ if args.first == "--unzip", args.count >= 2 {
 if args.first == "--markdown", args.count >= 2 {
     do {
         print(try Converted.markdown(url: URL(fileURLWithPath: args[1])).markdown, terminator: "")
+        exit(0)
+    } catch {
+        FileHandle.standardError.write("viw: \(error)\n".data(using: .utf8)!)
+        exit(1)
+    }
+}
+// Debug: `viw --drawio file.drawio` lists the pages, `viw --drawio file.drawio N out.png` renders page N (1-based) to a PNG.
+if args.first == "--drawio", args.count >= 2 {
+    do {
+        let pages = try Drawio.parse(url: URL(fileURLWithPath: args[1]))
+        if args.count < 4 {
+            for (i, p) in pages.enumerated() {
+                let b = Drawio.bounds(Drawio.layout(p))
+                print("\(i + 1)\t\(p.name)\t\(p.cells.count) cells\t\(Int(b.width)) × \(Int(b.height))")
+            }
+        } else {
+            guard let n = Int(args[2]), pages.indices.contains(n - 1) else { FileHandle.standardError.write("viw: no page \(args[2])\n".data(using: .utf8)!); exit(1) }
+            let image = Drawio.render(pages[n - 1])
+            let scale: CGFloat = 2
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(image.size.width * scale), pixelsHigh: Int(image.size.height * scale), bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            rep.size = image.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            let appearance = NSAppearance(named: ProcessInfo.processInfo.environment["VIW_DARK"] != nil ? .darkAqua : .aqua)!
+            appearance.performAsCurrentDrawingAppearance { image.draw(in: NSRect(origin: .zero, size: image.size)) }
+            NSGraphicsContext.restoreGraphicsState()
+            try rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: args[3]))
+        }
         exit(0)
     } catch {
         FileHandle.standardError.write("viw: \(error)\n".data(using: .utf8)!)

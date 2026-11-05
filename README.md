@@ -45,6 +45,7 @@ viw data.json log.jsonl     # JSON is pretty-printed (key order kept); JSON Line
 viw export.csv data.tsv     # delimited text as a grid (RFC 4180 quoting, delimiter / encoding detected)
 viw book.xlsx               # Excel workbooks: the same grid, one sheet at a time (zip + XML read by viw itself)
 viw paper.pdf photo.png     # PDF (PDFKit) and images, fitted to the window
+viw design.drawio           # draw.io diagrams, drawn by viw itself (no WebKit); ] / [ turn the pages
 viw clip.mp4 talk.m4a       # video and audio (AVKit): whatever macOS decodes plays, with vim keys for transport
 cat notes.md | viw          # read from stdin
 open -a viw README.md       # or double-click / drag a .md onto the Dock icon
@@ -118,6 +119,16 @@ kind it is (a nested zip included), `/` finds by path, `y` copies the path. Encr
 listed but cannot be opened. `viw --set-default` leaves `.zip` with Archive Utility unless you name it
 (`viw --set-default zip`).
 
+`.drawio` / `.dio` (draw.io / diagrams.net) are drawn by viw from the file's XML, compressed pages included, and shown
+like an image (fit, `+` / `-` zoom, `y` copies the picture); `]` / `[` turn the pages of a multi-page file, with the page name in
+the badge. Rectangles (rounded), ellipses, rhombi, triangles, hexagons, parallelograms, cylinders, documents, notes,
+processes, clouds, swimlanes / containers, tables (ER), text, embedded images and groups keep their look: fill, gradient,
+stroke, dash, shadow, rotation, label alignment and `<b>` / `<i>` / `<u>` runs. Edges follow their waypoints
+(orthogonal, straight or curved, rounded corners) with the usual arrow heads (classic, block, open, oval, diamond, ER
+crow's feet) and labels. Icon libraries and stencils (AWS, UML, …) are not drawn: such a shape becomes a box in its
+colours with its label, so the layout survives. Shapes without an explicit colour take the current appearance's
+colours; a coloured box gets black or white text to stay readable in dark mode.
+
 `.pptx` is converted the same way, one section per slide: `## Slide N: title`, the body placeholders as (nested)
 bullet lists, text boxes as paragraphs, tables, pictures, hyperlinks, and the speaker notes as a quote under the slide
 (layout, shapes and colours are not kept; charts and SmartArt leave a note). `.ipynb` (Jupyter) is converted the same way: Markdown cells as they are, code cells as fenced blocks in the
@@ -156,7 +167,7 @@ Drop files on the window to open them in new tabs.
 | `o` | open file… (in a new tab) |
 | `gt` / `gT`, `Tab` / `Shift-Tab` | next / previous tab |
 | `3gt` | go to tab 3 |
-| `]` / `[` | next / previous sheet (xlsx; `3]` three ahead) |
+| `]` / `[` | next / previous sheet (xlsx) or page (drawio); `3]` three ahead |
 | `+` / `-` / `=` | zoom in / out / reset (persisted) |
 | `q` | close the tab; the last one leaves an empty window, and `q` there closes the window (the app quits with its last window) |
 | `Esc` | clear pending count / selection |
@@ -212,7 +223,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/TextDocumentView.swift` | `DocumentView` for text: rendering, async highlighting, link handling, scrolling, find, snapshot |
 | `Sources/viw/TableDocumentView.swift` | `DocumentView` for tables (CSV / xlsx / SQLite): NSTableView grid, row cursor, search bar, TSV copy, sheet bar |
 | `Sources/viw/PDFDocumentView.swift` | `DocumentView` for PDFs: PDFKit, find, zoom, rotate |
-| `Sources/viw/ImageDocumentView.swift` | `DocumentView` for images: fit / zoom / rotate, ImageIO frame playback for animated images |
+| `Sources/viw/ImageDocumentView.swift` | `DocumentView` for images: fit / zoom / rotate, ImageIO frame playback for animated images; draw.io pages via `Drawio` |
+| `Sources/viw/Drawio.swift` | draw.io file → pages → cells (compressed pages inflated), layout (absolute bounds, edge routing) and Core Graphics rendering |
 | `Sources/viw/MediaDocumentView.swift` | `DocumentView` for video / audio: AVPlayerView with vim transport keys |
 | `Sources/viw/CSV.swift` | RFC 4180 parser with delimiter and encoding detection |
 | `Sources/viw/ZipArchive.swift` | dependency-free zip reader (central directory, stored / deflate via Compression, CRC-32) for xlsx |
@@ -240,7 +252,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 
 Debug helpers: `viw --unzip archive.zip [entry]` lists an archive's entries or writes one to stdout; `viw --xlsx book.xlsx [N | name]`
 lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula). `viw --markdown file.docx|file.pptx|file.ipynb`
-prints the Markdown a Word file or notebook is rendered from.
+prints the Markdown a Word file or notebook is rendered from. `viw --drawio file.drawio [N out.png]` lists a diagram's pages
+or renders page N to a PNG (`VIW_DARK=1` for the dark appearance).
 Environment variables (wrapped by `mise r snapshot`): `VIW_TIMING=1` prints parse / render / layout /
 highlight-query times and scroll offsets to stderr, `VIW_SNAPSHOT=out.png` renders the whole document to a PNG and exits (`VIW_SNAPSHOT_WIDTH=700`,
 `VIW_DARK=1` to vary).

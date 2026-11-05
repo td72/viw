@@ -169,7 +169,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             if records.count < all.count { truncated = (records.count, all.count) }
             attributed.append(renderer.renderCodeBlocks(records, language: "json", boxed: records.count <= 300))
             codeBlocks = renderer.codeBlocks
-        case .plain, .document, .notebook, .presentation, .table, .workbook, .database, .archive, .pdf, .image, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
+        case .plain, .document, .notebook, .presentation, .table, .workbook, .database, .archive, .pdf, .image, .diagram, .video, .audio: // these have their own path / DocumentView; text only if they ever land here
             attributed.append(renderer.renderCode(clamp(text), language: nil))
         }
         if let t = truncated {

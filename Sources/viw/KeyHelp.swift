@@ -89,6 +89,10 @@ enum KeyHelp {
         Entry("n / N", "animated: next / previous frame (pauses)"),
     ])
 
+    static let diagram = Section(title: "draw.io", entries: [
+        Entry("] / [   ⌘] / ⌘[", "next / previous page (3]: three ahead; wraps)"),
+    ])
+
     static let media = Section(title: "Video / audio", entries: [
         Entry("Space", "play / pause (at the end: from the top)"),
         Entry("j / k   d / u   ⌃f / ⌃b", "seek 5 s   30 s   1 min"),
