@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import viw
 
-/// `sample.xlsx` is written by openpyxl (see the generator in the PR that added it): shared
-/// strings, number formats, a hidden sheet and a Formulas sheet without cached values.
+/// `sample.xlsx` is written by openpyxl (see the generator in the PR that added it; the defined
+/// names and Formulas rows 10–11 were patched into its XML afterwards): shared strings, number
+/// formats, a hidden sheet and a Formulas sheet without cached values.
 /// `edge.xlsx` is hand-written XML covering the cell types and the odd corners.
 @Suite struct WorkbookTests {
     @Test func sampleSheetsAndValues() throws {
@@ -43,10 +44,24 @@ import Testing
         #expect(t.rows[5] == ["func", "150", "3", "TRUE", "#REF!"])         // SUM over a range; E7/E8 circular
         #expect(t.rows[6][1] == "#REF!")
         #expect(t.rows[7] == ["func2", "many", "2571.43", "8", "18,000"])
+        #expect(t.rows[8] == ["names", "120240", "126", "#NAME?", "5"])     // SUM(Sales), Rate*B2, an unknown name, COUNTA(1:1)
+        #expect(t.rows[9] == ["whole", "120240", "8", "9", "150"])          // SUM('売上'!E:E), COUNTA('売上'!1:1), COUNT(C:C), the sheet-scoped Qty
+        #expect(t.formulas[9]?[1] == "SUM('売上'!E:E)")
         #expect(t.formulas[0]?[3] == "B2*C2")
         #expect(t.formulas[3]?[2] == "'売上'!E2")
         #expect(t.formulas[5]?[1] == "SUM(B2:B3)")
         #expect(t.formulas[0]?[0] == nil)
+    }
+
+    @Test func definedNames() throws {
+        let wb = try Workbook(url: try fixture("sample.xlsx"))
+        #expect(wb.definedNames.map(\.name) == ["Sales", "Rate", "Qty", "Qty", "Gone"])   // _xlnm.Print_Area is Excel's own
+        #expect(wb.definedNames.map(\.sheet) == [nil, nil, 3, nil, nil])
+        #expect(wb.definedName("sales", sheet: 0) == "売上!$E$2:$E$7")
+        #expect(wb.definedName("Qty", sheet: 3) == "Formulas!$B$2:$B$3")   // the sheet-scoped one wins on its sheet
+        #expect(wb.definedName("Qty", sheet: 0) == "Regions!$B$2:$B$2")
+        #expect(wb.definedName("Gone", sheet: 0) == "#REF!")
+        #expect(wb.definedName("Nope", sheet: 0) == nil)
     }
 
     @Test func edgeCellTypesAndFormats() throws {

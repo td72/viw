@@ -4,13 +4,20 @@ import Foundation
 /// cannot be worked out (its formula is beyond this evaluator), `#REF!` for an unknown sheet.
 protocol FormulaCells {
     func value(sheet: String?, row: Int, column: Int) -> Formula.Value?
+    /// The used extent of a sheet (rows, columns), which bounds whole-column / whole-row ranges
+    /// (`A:A`, `2:5`); nil for an unknown sheet.
+    func extent(sheet: String?) -> (rows: Int, columns: Int)?
+    /// A defined name's definition (`Sheet1!$A$1:$B$3`, `1.05`) as seen from the current sheet
+    /// (a sheet-scoped name hides a global one); nil when there is no such name.
+    func definedName(_ name: String) -> String?
 }
 
 /// Just enough of Excel's formula language to fill in cells that a file saved without
 /// cached values (openpyxl and friends): numbers, strings, references (`A1`, `$A$1`,
-/// `Sheet2!B3`, `'My sheet'!C4`), `+ - * / ^ & %`, comparisons, parentheses and the common
-/// functions (`Formula.functions`), with ranges as their arguments. Anything else throws
-/// `Unsupported`, and the cell stays empty with the formula text in the detail pane.
+/// `Sheet2!B3`, `'My sheet'!C4`), `+ - * / ^ & %`, comparisons, parentheses, defined names and
+/// the common functions (`Formula.functions`), with ranges (`A1:B3`, `A:A`, `2:5`) as their
+/// arguments. Anything else throws `Unsupported`, and the cell stays empty with the formula
+/// text in the detail pane.
 enum Formula {
     enum Value: Equatable {
         case number(Double)
@@ -29,12 +36,25 @@ enum Formula {
 
         /// "B3" / "$B$3" / "Sheet!B3".
         var text: String {
-            var s = ""
-            if let sheet {
-                let plain = sheet.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
-                s = (plain ? sheet : "'" + sheet.replacingOccurrences(of: "'", with: "''") + "'") + "!"
-            }
-            return s + (absColumn ? "$" : "") + Formula.columnLetters(column) + (absRow ? "$" : "") + String(row)
+            Formula.sheetPrefix(sheet) + (absColumn ? "$" : "") + Formula.columnLetters(column) + (absRow ? "$" : "") + String(row)
+        }
+    }
+
+    /// A whole-column (`A:C`, `$B:$B`) or whole-row (`2:5`) range; its cells are bounded by the
+    /// sheet's used extent along the other axis.
+    struct Span: Equatable {
+        enum Axis { case columns, rows }
+        var sheet: String?
+        var axis: Axis
+        var from: Int      // columns 0-based, rows 1-based
+        var to: Int
+        var absFrom = false
+        var absTo = false
+
+        /// "A:C" / "$2:$5" / "Sheet!A:A".
+        var text: String {
+            func part(_ n: Int, _ abs: Bool) -> String { (abs ? "$" : "") + (axis == .columns ? Formula.columnLetters(n) : String(n)) }
+            return Formula.sheetPrefix(sheet) + part(from, absFrom) + ":" + part(to, absTo)
         }
     }
 
@@ -47,6 +67,7 @@ enum Formula {
         case string(String)
         case ref(Ref)
         case range(Ref, Ref)
+        case span(Span)
         case name(String)     // function or defined name (followed by `(` for a call)
         case op(String)       // + - * / ^ & = <> < > <= >=
         case percent, lparen, rparen, comma, semicolon
@@ -62,6 +83,7 @@ enum Formula {
             let start = i
             if c.isWhitespace { i = s.index(after: i); continue }
             if c.isNumber || (c == "." && (peek(1)?.isNumber ?? false)) {
+                if let (span, end) = Self.span(in: s, from: i, sheet: nil) { out.append((.span(span), i..<end)); i = end; continue } // 2:5
                 var j = i
                 while j < s.endIndex, s[j].isNumber || s[j] == "." { j = s.index(after: j) }
                 if j < s.endIndex, s[j] == "E" || s[j] == "e" { // 1E-5
@@ -118,7 +140,8 @@ enum Formula {
                     }
                     i = tokenEnd; continue
                 }
-                if sheet != nil { throw Unsupported(what: "sheet reference") } // Sheet!A:A, Sheet!name
+                if let (span, end) = Self.span(in: s, from: j, sheet: sheet) { out.append((.span(span), start..<end)); i = end; continue }
+                if sheet != nil { throw Unsupported(what: "sheet reference") } // Sheet!name
                 var k = i
                 while k < s.endIndex, s[k].isLetter || s[k].isNumber || s[k] == "_" || s[k] == "." { k = s.index(after: k) }
                 guard k > i else { throw Unsupported(what: "character \(c)") }
@@ -163,6 +186,38 @@ enum Formula {
         return (Ref(sheet: sheet, row: row, column: col - 1, absRow: absRow, absColumn: absCol), j)
     }
 
+    /// `$A:$C` or `2:5` at `from` → the span and where it ends; nil when the text there is not one.
+    private static func span(in s: String, from: String.Index, sheet: String?) -> (Span, String.Index)? {
+        // `$?` then letters (a column) or digits (a row); the index after it, or nil
+        func part(_ from: String.Index, _ axis: Span.Axis) -> (value: Int, abs: Bool, end: String.Index)? {
+            var j = from
+            var abs = false
+            if j < s.endIndex, s[j] == "$" { abs = true; j = s.index(after: j) }
+            var n = 0, count = 0
+            while j < s.endIndex, s[j].isASCII, axis == .columns ? s[j].isLetter : s[j].isNumber {
+                n = axis == .columns ? n * 26 + Int(s[j].uppercased().unicodeScalars.first!.value - 64) : n * 10 + s[j].wholeNumberValue!
+                count += 1; j = s.index(after: j)
+            }
+            guard count > 0, axis == .rows || count <= 3, axis == .columns || n > 0 else { return nil }
+            return (axis == .columns ? n - 1 : n, abs, j)
+        }
+        for axis in [Span.Axis.columns, .rows] {
+            guard let a = part(from, axis), a.end < s.endIndex, s[a.end] == ":", let b = part(s.index(after: a.end), axis) else { continue }
+            // "A:B2" or "1:1x" is not a span
+            if b.end < s.endIndex, s[b.end].isLetter || s[b.end].isNumber || s[b.end] == "_" || s[b.end] == "." || s[b.end] == "(" || s[b.end] == "$" { continue }
+            return (Span(sheet: sheet, axis: axis, from: min(a.value, b.value), to: max(a.value, b.value),
+                         absFrom: a.value <= b.value ? a.abs : b.abs, absTo: a.value <= b.value ? b.abs : a.abs), b.end)
+        }
+        return nil
+    }
+
+    /// "Sheet!" / "'My sheet'!" / "" for no sheet.
+    static func sheetPrefix(_ sheet: String?) -> String {
+        guard let sheet else { return "" }
+        let plain = sheet.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
+        return (plain ? sheet : "'" + sheet.replacingOccurrences(of: "'", with: "''") + "'") + "!"
+    }
+
     static func columnLetters(_ c: Int) -> String {
         var n = c + 1, s = ""
         while n > 0 { n -= 1; s = String(UnicodeScalar(65 + n % 26)!) + s; n /= 26 }
@@ -188,6 +243,11 @@ enum Formula {
                 if !b.absColumn { b.column = max(0, b.column + dc) }
                 var second = b; second.sheet = nil
                 out += a.text + ":" + second.text
+            case .span(var sp):
+                let d = sp.axis == .columns ? dc : dr, floor = sp.axis == .columns ? 0 : 1
+                if !sp.absFrom { sp.from = max(floor, sp.from + d) }
+                if !sp.absTo { sp.to = max(floor, sp.to + d) }
+                out += sp.text
             default:
                 out += formula[range]
             }
@@ -200,10 +260,10 @@ enum Formula {
     // MARK: - Evaluation
 
     /// The value of `formula` (without the leading `=`), or nil when it uses something this
-    /// evaluator does not do (functions, ranges in arithmetic, names).
+    /// evaluator does not do (unknown functions, ranges in arithmetic). An unknown name is `#NAME?`.
     static func evaluate(_ formula: String, cells: FormulaCells) -> Value? {
         guard let tokens = try? tokenize(formula) else { return nil }
-        var p = Parser(tokens: tokens.map(\.0), cells: cells)
+        var p = Parser(tokens: tokens.map(\.0), cells: cells, depth: 0)
         guard let v = try? p.comparison(), p.atEnd else { return nil }
         return v
     }
@@ -211,9 +271,10 @@ enum Formula {
     private struct Parser {
         let tokens: [Token]
         let cells: FormulaCells
+        let depth: Int // of defined-name expansion (a name defined through another name)
         var i = 0
 
-        init(tokens: [Token], cells: FormulaCells) { self.tokens = tokens; self.cells = cells }
+        init(tokens: [Token], cells: FormulaCells, depth: Int) { self.tokens = tokens; self.cells = cells; self.depth = depth }
 
         var atEnd: Bool { i >= tokens.count }
         private var current: Token? { i < tokens.count ? tokens[i] : nil }
@@ -305,8 +366,13 @@ enum Formula {
                 if current == .lparen { i += 1; return try Formula.call(upper, try arguments()) }
                 if upper == "TRUE" { return .bool(true) }
                 if upper == "FALSE" { return .bool(false) }
-                throw Unsupported(what: n) // defined names
-            case .range?: throw Unsupported(what: "range outside a function")
+                guard let arg = try definedName(n) else { return .error("#NAME?") }
+                switch arg {
+                case .value(let v): return v
+                case .cells(let vs) where vs.count == 1: return vs[0] // a name for one cell
+                case .cells: throw Unsupported(what: "range outside a function")
+                }
+            case .range?, .span?: throw Unsupported(what: "range outside a function")
             default: throw Unsupported(what: "syntax")
             }
         }
@@ -316,13 +382,21 @@ enum Formula {
             var args: [Arg] = []
             if current == .rparen { i += 1; return args }
             while true {
+                let alone = i + 1 < tokens.count && [.comma, .semicolon, .rparen].contains(tokens[i + 1])
                 if case .range(let a, let b)? = current {
                     i += 1
                     args.append(.cells(try rangeValues(a, b)))
-                } else if case .ref(let r)? = current, i + 1 < tokens.count, [.comma, .semicolon, .rparen].contains(tokens[i + 1]) {
+                } else if case .span(let sp)? = current {
+                    i += 1
+                    args.append(.cells(try spanValues(sp)))
+                } else if case .ref(let r)? = current, alone {
                     // A lone reference is a one-cell range: an empty or text cell is skipped, not coerced (AVERAGE(B3) → #DIV/0!)
                     i += 1
                     args.append(.cells(try rangeValues(r, r)))
+                } else if case .name(let n)? = current, alone, let arg = try definedName(n) {
+                    // A lone defined name keeps its shape: a named range is cells, a named constant a value
+                    i += 1
+                    args.append(arg)
                 } else {
                     args.append(.value(try comparison()))
                 }
@@ -346,6 +420,40 @@ enum Formula {
                 }
             }
             return out
+        }
+
+        /// The cells of a whole-column / whole-row range, cut down to the sheet's used extent.
+        private func spanValues(_ sp: Span) throws -> [Value] {
+            guard let (rows, columns) = cells.extent(sheet: sp.sheet) else { return [.error("#REF!")] }
+            let a: Ref, b: Ref
+            switch sp.axis {
+            case .columns:
+                guard rows > 0, sp.from < columns else { return [] }
+                a = Ref(sheet: sp.sheet, row: 1, column: sp.from); b = Ref(sheet: sp.sheet, row: rows, column: min(sp.to, columns - 1))
+            case .rows:
+                guard columns > 0, sp.from <= rows else { return [] }
+                a = Ref(sheet: sp.sheet, row: sp.from, column: 0); b = Ref(sheet: sp.sheet, row: min(sp.to, rows), column: columns - 1)
+            }
+            return try rangeValues(a, b)
+        }
+
+        /// A defined name resolved: a reference or range becomes its cells, anything else (a constant,
+        /// a formula) its value. nil when the workbook has no such name.
+        private func definedName(_ name: String) throws -> Arg? {
+            guard let definition = cells.definedName(name) else { return nil }
+            if definition == "#REF!" { return .value(.error("#REF!")) } // the sheet it pointed at was deleted
+            guard depth < 8 else { throw Unsupported(what: "nested names") }
+            let tokens = try Formula.tokenize(definition).map(\.0)
+            switch tokens.count == 1 ? tokens[0] : nil {
+            case .ref(let r)?: return .cells(try rangeValues(r, r))
+            case .range(let a, let b)?: return .cells(try rangeValues(a, b))
+            case .span(let sp)?: return .cells(try spanValues(sp))
+            default:
+                var p = Parser(tokens: tokens, cells: cells, depth: depth + 1)
+                let v = try p.comparison()
+                guard p.atEnd else { throw Unsupported(what: "name definition") }
+                return .value(v)
+            }
         }
 
         private func arithmetic(_ a: Value, _ b: Value, _ f: (Double, Double) -> Double) -> Value {

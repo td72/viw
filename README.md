@@ -85,10 +85,11 @@ Previous Sheet, `⌘]` / `⌘[`) to switch; the window subtitle names the sheet.
 cached result of formulas. The formula itself shows under the value in the detail pane and in the cell's tooltip. A file
 saved without cached values (openpyxl and other libraries write none) gets a small evaluator for the cells that need it:
 references (`B3`, `$B$3`, `Sheet2!C4`, `'売上 2026'!C4`, shared formulas), `+ - * / ^ & %`, comparisons and parentheses,
-with Excel's errors (`#DIV/0!`, `#REF!` for a circular reference, `#VALUE!`), and the common functions with ranges as
-arguments: SUM, PRODUCT, AVERAGE, COUNT, COUNTA, COUNTBLANK, MIN, MAX, ABS, INT, SQRT, MOD, POWER, ROUND / ROUNDUP / ROUNDDOWN, IF,
+with Excel's errors (`#DIV/0!`, `#REF!` for a circular reference, `#VALUE!`, `#NAME?`), defined names (`=SUM(Sales)`,
+`=Rate*B2`; workbook and sheet-scoped, constants too), and the common functions with ranges as arguments — `A1:B3` as
+well as whole columns and rows (`A:A`, `'売上'!E:E`, `1:1`, cut down to the sheet's used cells): SUM, PRODUCT, AVERAGE, COUNT, COUNTA, COUNTBLANK, MIN, MAX, ABS, INT, SQRT, MOD, POWER, ROUND / ROUNDUP / ROUNDDOWN, IF,
 IFERROR, AND, OR, NOT, LEN, UPPER, LOWER, TRIM, LEFT, RIGHT, MID, CONCAT / CONCATENATE, TEXT, VALUE, ISBLANK / ISNUMBER / ISTEXT /
-ISERROR. A formula using anything else (VLOOKUP, defined names, whole-column ranges) stays empty with its formula in the pane. Number formats are applied in a simple form — dates and times
+ISERROR. A formula using anything else (VLOOKUP, structured references) stays empty with its formula in the pane. Number formats are applied in a simple form — dates and times
 (1900 and 1904 systems, `[h]` elapsed), decimals, thousands grouping, percent; `General` shows up to 10 significant
 digits and keeps integers exact; currency symbols and colors are not rendered — so the grid reads like Excel and the
 column types still infer (`1,234` and `12.5%` count as numbers). Column widths come from the sheet's `<cols>` when the
@@ -231,7 +232,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/ArchiveDocumentView.swift` | `DocumentView` for zip archives: NSOutlineView tree, details / preview pane, find, vim keys |
 | `Sources/viw/Archive.swift` | `ArchiveBrowser` / `ArchiveNode`: a zip as a tree, text preview, extraction of one entry for a tab |
 | `Sources/viw/XLSX.swift` | `Workbook`: sheets / shared strings / styles from the OOXML parts, number-format spelling, byte-level XML scanner |
-| `Sources/viw/Formula.swift` | xlsx formula tokenizer / evaluator (references, arithmetic, 38 functions) |
+| `Sources/viw/Formula.swift` | xlsx formula tokenizer / evaluator (references, whole columns / rows, defined names, arithmetic, 38 functions) |
 | `Sources/viw/SQLite.swift` | `SheetSource` (what the sheet bar switches between) and `SQLiteDatabase` over the system sqlite3 |
 | `Sources/viw/XMLTree.swift` | small XMLParser-backed DOM for the OOXML parts read whole (Word body) |
 | `Sources/viw/DOCX.swift` | Word body → Markdown (headings, runs, lists, tables, links, pictures) |

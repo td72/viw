@@ -2,8 +2,8 @@ import Foundation
 
 /// The values of an `.xlsx` / `.xlsm` workbook, read with no dependencies: `ZipArchive` opens
 /// the container, a byte-level scanner streams the big parts (sheets, shared strings) and
-/// `XMLParser` reads the small ones. Formulas are not evaluated (the cached `<v>` is shown);
-/// styles only decide how numbers are spelled (dates, decimals, percent, grouping). Sheets
+/// `XMLParser` reads the small ones. Formulas show their cached `<v>` and are evaluated only
+/// when there is none (`Formula`); styles only decide how numbers are spelled (dates, decimals, percent, grouping). Sheets
 /// are parsed on demand, so a 20-sheet book opens as fast as its first sheet.
 final class Workbook: SheetSource {
     struct Sheet {
@@ -12,10 +12,19 @@ final class Workbook: SheetSource {
         let hidden: Bool
     }
 
+    /// `<definedName>` from workbook.xml: `Sales` → `売上!$E$2:$E$7`, `Rate` → `1.05`. `sheet` is set
+    /// for a sheet-scoped name (`localSheetId`), which only formulas on that sheet see.
+    struct DefinedName {
+        let name: String
+        let sheet: Int?
+        let text: String
+    }
+
     var sheetNames: [String] { sheets.map(\.name) }
     func sheetNote(_ i: Int) -> String? { sheets.indices.contains(i) && sheets[i].hidden ? "hidden in Excel" : nil }
 
     let sheets: [Sheet]
+    let definedNames: [DefinedName]
     private let zip: ZipArchive
     private let sharedStrings: [String]
     private let styles: Styles
@@ -23,14 +32,25 @@ final class Workbook: SheetSource {
 
     init(url: URL) throws {
         zip = try ZipArchive(url: url)
-        let (sheets, date1904) = try Self.readWorkbook(zip)
+        let (sheets, definedNames, date1904) = try Self.readWorkbook(zip)
         self.sheets = sheets
+        self.definedNames = definedNames
         self.date1904 = date1904
         sharedStrings = zip.entries["xl/sharedStrings.xml"] != nil ? Self.readSharedStrings(try zip.data(for: "xl/sharedStrings.xml")) : []
         styles = zip.entries["xl/styles.xml"] != nil ? Styles(try zip.data(for: "xl/styles.xml")) : Styles()
     }
 
     private var parsedSheets: [Int: ParsedSheet] = [:]
+
+    /// The definition of `name` as seen from `sheet` (case-insensitive; a sheet-scoped name wins over a global one).
+    func definedName(_ name: String, sheet: Int) -> String? {
+        var global: String?
+        for n in definedNames where n.name.caseInsensitiveCompare(name) == .orderedSame {
+            if n.sheet == sheet { return n.text }
+            if n.sheet == nil { global = n.text }
+        }
+        return global
+    }
 
     /// The sheet's cells, parsed once and kept (formulas on other sheets may refer to them).
     func parsed(sheet i: Int) throws -> ParsedSheet {
@@ -83,7 +103,7 @@ final class Workbook: SheetSource {
 
     // MARK: - workbook.xml + rels
 
-    private static func readWorkbook(_ zip: ZipArchive) throws -> ([Sheet], Bool) {
+    private static func readWorkbook(_ zip: ZipArchive) throws -> ([Sheet], [DefinedName], Bool) {
         let rels = SimpleXML.elements(in: try zip.data(for: "xl/_rels/workbook.xml.rels"), named: "Relationship")
         var targets: [String: String] = [:]
         for r in rels {
@@ -93,13 +113,26 @@ final class Workbook: SheetSource {
         let wb = try zip.data(for: "xl/workbook.xml")
         let date1904 = SimpleXML.elements(in: wb, named: "workbookPr").first.map { ["1", "true"].contains($0["date1904"] ?? "") } ?? false
         var sheets: [Sheet] = []
-        for s in SimpleXML.elements(in: wb, named: "sheet") {
+        var indexByPosition: [Int: Int] = [:] // position in <sheets> (what localSheetId counts) → index in `sheets`
+        for (position, s) in SimpleXML.elements(in: wb, named: "sheet").enumerated() {
             // The relationship id is namespaced (r:id); chartsheets have no worksheet target and are skipped.
             guard let rid = s["r:id"] ?? s["id"], let path = targets[rid] else { continue }
+            indexByPosition[position] = sheets.count
             sheets.append(Sheet(name: s["name"] ?? "Sheet \(sheets.count + 1)", path: path, hidden: (s["state"] ?? "visible") != "visible"))
         }
         guard !sheets.isEmpty else { throw ZipArchive.Error.entryNotFound("worksheet") }
-        return (sheets, date1904)
+        var names: [DefinedName] = []
+        for n in SimpleXML.elements(in: wb, named: "definedName") {
+            // `_xlnm.` names are Excel's own (print area, filter database)
+            guard let name = n["name"], !name.hasPrefix("_xlnm."), let text = n["#text"]?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
+            var sheet: Int?
+            if let local = n["localSheetId"].flatMap(Int.init) {
+                guard let i = indexByPosition[local] else { continue } // scoped to a chartsheet
+                sheet = i
+            }
+            names.append(DefinedName(name: name, sheet: sheet, text: text))
+        }
+        return (sheets, names, date1904)
     }
 
     // MARK: - sharedStrings.xml
@@ -367,6 +400,8 @@ final class ParsedSheet {
     var columnWidths: [Int: Double] = [:]
     /// Row count from `<dimension>`, when rows had to be dropped.
     var truncatedTotal: Int?
+    /// The widest row, once parsing is done: the extent of whole-row ranges.
+    lazy var columnCount: Int = cells.lazy.map(\.count).max() ?? 0
 
     func cell(row: Int, column: Int) -> RawCell? {
         guard row >= 1, row <= cells.count, column >= 0, column < cells[row - 1].count else { return nil }
@@ -388,14 +423,23 @@ final class WorkbookCells: FormulaCells {
         currentSheet = sheet
     }
 
+    /// The current sheet for nil, else the named one (case-insensitive); nil for an unknown name.
+    private func index(ofSheet name: String?) -> Int? {
+        guard let name else { return currentSheet }
+        return workbook.sheets.firstIndex { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
     func value(sheet name: String?, row: Int, column: Int) -> Formula.Value? {
-        var index = currentSheet
-        if let name {
-            guard let i = workbook.sheets.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { return .error("#REF!") }
-            index = i
-        }
+        guard let index = index(ofSheet: name) else { return .error("#REF!") }
         return value(sheetIndex: index, row: row, column: column)
     }
+
+    func extent(sheet name: String?) -> (rows: Int, columns: Int)? {
+        guard let i = index(ofSheet: name), let sheet = try? workbook.parsed(sheet: i) else { return nil }
+        return (sheet.cells.count, sheet.columnCount)
+    }
+
+    func definedName(_ name: String) -> String? { workbook.definedName(name, sheet: currentSheet) }
 
     /// nil: the cell depends on something the evaluator cannot do (so stays empty).
     func value(sheetIndex i: Int, row: Int, column: Int) -> Formula.Value? {
@@ -722,15 +766,26 @@ enum XMLScanner {
 /// Just enough XML for the small parts (rels, workbook, styles): the attributes of every
 /// element with a given name, in document order.
 enum SimpleXML {
+    /// The attributes of every `<name>` element (after `<marker>`, if given), plus its text content
+    /// under `"#text"` when it has any.
     static func elements(in data: Data, named name: String, after marker: String? = nil) -> [[String: String]] {
         final class D: NSObject, XMLParserDelegate {
             let name: String, marker: String?
             var armed: Bool
             var found: [[String: String]] = []
+            var current: [String: String]?
+            var text = ""
             init(name: String, marker: String?) { self.name = name; self.marker = marker; armed = marker == nil }
             func parser(_ p: XMLParser, didStartElement e: String, namespaceURI: String?, qualifiedName: String?, attributes a: [String: String]) {
                 if let marker, e == marker { armed = true; return }
-                if armed, e == name { found.append(a) }
+                if armed, e == name { current = a; text = "" }
+            }
+            func parser(_ p: XMLParser, foundCharacters s: String) { if current != nil { text += s } }
+            func parser(_ p: XMLParser, didEndElement e: String, namespaceURI: String?, qualifiedName: String?) {
+                guard e == name, var a = current else { return }
+                if !text.isEmpty { a["#text"] = text }
+                found.append(a)
+                current = nil
             }
         }
         let d = D(name: name, marker: marker)
