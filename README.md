@@ -24,11 +24,13 @@ Requires macOS 14+ (Apple silicon).
 brew install --cask td72/tap/viw     # viw.app into /Applications, `viw` CLI into Homebrew's bin
 ```
 
-Homebrew 7 asks you to trust a third-party cask the first time (`brew trust --cask td72/tap/viw` does the same up
-front). The app is signed ad hoc, not notarized, so macOS blocks the first launch: allow it once in System Settings ›
-Privacy & Security › "Open Anyway", or clear the quarantine flag (`xattr -d com.apple.quarantine /Applications/viw.app`,
-or install with `--no-quarantine`). Then `viw --set-default` makes viw the default app for its file types. The cask
-lives in [td72/homebrew-tap](https://github.com/td72/homebrew-tap); its `version` / `sha256` are bumped by hand per release.
+Homebrew 7 refuses casks from third-party taps until you trust them, so run `brew trust --cask td72/tap/viw` first
+(the error message says the same). The app is signed ad hoc, not notarized, so macOS blocks the first launch with a
+dialog whose buttons are "Move to Trash" and "Done": choose Done, then allow it once in System Settings › Privacy &
+Security › "Open Anyway". Or clear the quarantine flag before the first launch (`xattr -d com.apple.quarantine
+/Applications/viw.app`, or install with `--no-quarantine`). Then `viw --set-default` makes viw the default app for its
+file types. The cask lives in [td72/homebrew-tap](https://github.com/td72/homebrew-tap); its `version` / `sha256` are
+bumped by hand per release.
 
 ### From a release zip
 
