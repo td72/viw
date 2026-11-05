@@ -179,6 +179,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Entry point
 
 let args = Array(CommandLine.arguments.dropFirst())
+if args.first == "--version" {
+    // From the app bundle's Info.plist (the release workflow fills it from the tag); the bare binary has none.
+    let info = Bundle.main.infoDictionary
+    print("viw \(info?["CFBundleShortVersionString"] as? String ?? "dev")" + ((info?["CFBundleVersion"] as? String).map { " (\($0))" } ?? ""))
+    exit(0)
+}
 if args.contains("-h") || args.contains("--help") {
     print("""
     viw — vim-keyed viewer (markdown, code, JSON, CSV, xlsx, PDF, images, draw.io)
@@ -186,6 +192,7 @@ if args.contains("-h") || args.contains("--help") {
     usage: viw [FILE ...]        open files (markdown, source code, .json, .csv / .tsv, .xlsx, .pdf, images, .drawio, video / audio); none: an empty window
            cat FILE | viw        read markdown from stdin
            viw --set-default     make viw the default app for its file types (or: --set-default md csv)
+           viw --version         print the version
 
     keys (`?` in the app shows the ones for the current view):
 

@@ -16,7 +16,27 @@ v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 ## Install
 
-Requires macOS 14+, Xcode Command Line Tools (Swift 5.9+) and [mise](https://mise.jdx.dev).
+Requires macOS 14+ (Apple silicon).
+
+### From a release
+
+Download `viw-<version>-macos.zip` from [Releases](https://github.com/td72/viw/releases), unzip it and move `viw.app`
+to `~/Applications`. The app is signed ad hoc, not notarized, so Gatekeeper refuses it the first time: clear the
+quarantine flag once, then link the CLI and (optionally) make viw the default app for its file types.
+
+```sh
+xattr -d com.apple.quarantine ~/Applications/viw.app
+ln -sf ~/Applications/viw.app/Contents/MacOS/viw ~/.local/bin/viw
+viw --version
+viw --set-default
+```
+
+A `v*` tag builds the zip in CI (`.github/workflows/release.yml`, the same `mise r app` as below, with the version
+taken from the tag); a `.sha256` file sits next to each zip.
+
+### From source
+
+Needs Xcode Command Line Tools (Swift 5.9+) and [mise](https://mise.jdx.dev).
 
 ```sh
 mise trust
