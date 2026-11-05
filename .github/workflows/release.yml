@@ -1,0 +1,52 @@
+name: release
+# A `v*` tag builds viw.app (the same `mise r app` as a local install), zips it and attaches the zip
+# to a GitHub Release, so a Mac without the toolchain can install it. The app is ad-hoc signed,
+# not notarized (that needs an Apple Developer account): README tells how to clear the quarantine.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install: false   # no mise-managed tools: Swift comes from Xcode
+      - name: Swift version
+        id: swift
+        run: |
+          swift --version
+          echo "version=$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p')" >> "$GITHUB_OUTPUT"
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/checkouts
+            .build/artifacts
+            .build/workspace-state.json
+          key: swiftpm-${{ runner.os }}-${{ steps.swift.outputs.version }}-${{ hashFiles('Package.resolved') }}
+      - name: Version from the tag
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"            # v0.3.0 → 0.3.0, v0.3.0-rc.1 → 0.3.0-rc.1
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          plutil -replace CFBundleShortVersionString -string "$version" Resources/Info.plist
+          plutil -replace CFBundleVersion -string "$GITHUB_RUN_NUMBER" Resources/Info.plist
+      - name: Build viw.app
+        run: mise r app
+      - name: Zip
+        run: |
+          zip="viw-${{ steps.version.outputs.version }}-macos.zip"
+          ditto -c -k --keepParent build/viw.app "$zip"
+          shasum -a 256 "$zip" | tee "$zip.sha256"
+          build/viw.app/Contents/MacOS/viw --version
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--generate-notes --title "viw ${{ steps.version.outputs.version }}")
+          case "${{ steps.version.outputs.version }}" in *-*) flags+=(--prerelease);; esac
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" viw-*-macos.zip viw-*-macos.zip.sha256
