@@ -28,6 +28,22 @@ import Testing
         #expect(try tokens("TRUE") == [.name("TRUE")])
     }
 
+    @Test func wholeColumnsAndRows() throws {
+        #expect(try tokens("SUM(A:A)") == [.name("SUM"), .lparen, .span(.init(sheet: nil, axis: .columns, from: 0, to: 0)), .rparen])
+        #expect(try tokens("$C:A") == [.span(.init(sheet: nil, axis: .columns, from: 0, to: 2, absFrom: false, absTo: true))]) // sorted, $ follows
+        #expect(try tokens("2:5") == [.span(.init(sheet: nil, axis: .rows, from: 2, to: 5))])
+        #expect(try tokens("$1:$1") == [.span(.init(sheet: nil, axis: .rows, from: 1, to: 1, absFrom: true, absTo: true))])
+        #expect(try tokens("'売上'!E:E+Data!$3:$4") == [
+            .span(.init(sheet: "売上", axis: .columns, from: 4, to: 4)), .op("+"),
+            .span(.init(sheet: "Data", axis: .rows, from: 3, to: 4, absFrom: true, absTo: true)),
+        ])
+        #expect(try tokens("Sales*2") == [.name("Sales"), .op("*"), .number(2)])   // a name is not a span
+        #expect(throws: Formula.Unsupported.self) { try self.tokens("A:B2") }        // half a span
+        #expect(throws: Formula.Unsupported.self) { try self.tokens("ABCD:ABCE") }  // too many letters for a column
+        #expect(Formula.Span(sheet: "a b", axis: .columns, from: 1, to: 2, absFrom: true).text == "'a b'!$B:C")
+        #expect(Formula.Span(sheet: nil, axis: .rows, from: 2, to: 5, absTo: true).text == "2:$5")
+    }
+
     @Test func columnLetters() {
         #expect(Formula.columnLetters(0) == "A")
         #expect(Formula.columnLetters(25) == "Z")
@@ -45,6 +61,9 @@ import Testing
         #expect(Formula.shift("A1&\"A1\"", rows: 1, columns: 1) == "B2&\"A1\"")
         #expect(Formula.shift("Sheet!A1+'x y'!$B2", rows: 1, columns: 1) == "Sheet!B2+'x y'!$B3")
         #expect(Formula.shift("A1", rows: -5, columns: -5) == "A1") // never off the sheet
+        #expect(Formula.shift("SUM(A:A)+SUM($B:B)", rows: 3, columns: 1) == "SUM(B:B)+SUM($B:C)")
+        #expect(Formula.shift("COUNTA(1:1)+COUNTA(Data!$2:3)", rows: 2, columns: 5) == "COUNTA(3:3)+COUNTA(Data!$2:5)")
+        #expect(Formula.shift("Sales*Rate", rows: 1, columns: 1) == "Sales*Rate")  // names do not move
     }
 }
 
@@ -97,10 +116,48 @@ import Testing
         #expect(evaluate("Z9=\"\"", cells) == .bool(true))         // empty equals the empty string
     }
 
+    @Test func wholeColumnsAndRows() {
+        var cells = MockCells()
+        cells.cells = ["A1": .number(1), "A2": .text("x"), "A3": .number(3), "B1": .number(10), "C2": .bool(true), "Other!B4": .number(7), "Other!A1": .number(1)]
+        cells.sheets = ["Other"]
+        #expect(evaluate("SUM(A:A)", cells) == .number(4))                  // text in the column is skipped
+        #expect(evaluate("SUM(A:B)", cells) == .number(14))
+        #expect(evaluate("COUNTA(1:1)", cells) == .number(2))               // A1, B1 (C1 is empty)
+        #expect(evaluate("COUNTA(2:3)", cells) == .number(3))
+        #expect(evaluate("SUM(Z:Z)", cells) == .number(0))                  // past the used extent
+        #expect(evaluate("COUNTBLANK(A:A)", cells) == .number(0))           // the extent is 3 rows
+        #expect(evaluate("COUNTBLANK(C:C)", cells) == .number(2))
+        #expect(evaluate("SUM(Other!B:B)", cells) == .number(7))
+        #expect(evaluate("SUM(Other!4:4)", cells) == .number(7))
+        #expect(evaluate("SUM(Nope!A:A)", cells) == .error("#REF!"))
+        #expect(evaluate("A:A") == nil)                                     // not a value by itself
+    }
+
+    @Test func definedNames() {
+        var cells = MockCells()
+        cells.cells = ["A1": .number(2), "A2": .number(3), "Data!B1": .number(10), "Data!B2": .number(20), "Data!B3": .text("x")]
+        cells.sheets = ["Data"]
+        cells.names = ["Sales": "Data!$B$1:$B$3", "Rate": "1.05", "First": "$A$1", "Total": "SUM(Sales)*Rate", "Col": "Data!B:B", "Gone": "#REF!", "Loop": "Loop+1", "Bad": "VLOOKUP(1,A1:B2,2)"]
+        #expect(evaluate("SUM(Sales)", cells) == .number(30))
+        #expect(evaluate("COUNTA(sales)", cells) == .number(3))             // names are case-insensitive
+        #expect(evaluate("Rate*100", cells) == .number(105))
+        #expect(evaluate("SUM(Rate, 1)", cells) == .number(2.05))           // a constant stays a value in a function
+        #expect(evaluate("First+1", cells) == .number(3))                   // a one-cell name is its value
+        #expect(evaluate("AVERAGE(First)", cells) == .number(2))
+        #expect(evaluate("Total", cells) == .number(31.5))                  // a name defined through other names
+        #expect(evaluate("SUM(Col)", cells) == .number(30))
+        #expect(evaluate("Sales+1", cells) == nil)                          // a range in arithmetic
+        #expect(evaluate("Gone", cells) == .error("#REF!"))
+        #expect(evaluate("Nope+1", cells) == .error("#NAME?"))
+        #expect(evaluate("SUM(Nope)", cells) == .error("#NAME?"))
+        #expect(evaluate("Loop", cells) == nil)                             // self-referential: given up, not hung
+        #expect(evaluate("Bad", cells) == nil)                              // unsupported inside the definition
+    }
+
     @Test func unsupportedIsNil() {
         #expect(evaluate("VLOOKUP(A1,B1:C2,2)") == nil)
         #expect(evaluate("A1:B1") == nil)
-        #expect(evaluate("FOO") == nil)
+        #expect(evaluate("FOO") == .error("#NAME?"))   // no such name
         #expect(evaluate("1+") == nil)
         #expect(evaluate("(1") == nil)
         #expect(evaluate("1 2") == nil)
