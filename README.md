@@ -18,11 +18,25 @@ v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
 Requires macOS 14+ (Apple silicon).
 
-### From a release
+### Homebrew
+
+```sh
+brew install --cask td72/tap/viw     # viw.app into /Applications, `viw` CLI into Homebrew's bin
+```
+
+Homebrew 7 refuses casks from third-party taps until you trust them, so run `brew trust --cask td72/tap/viw` first
+(the error message says the same). The app is signed ad hoc, not notarized, so macOS blocks the first launch with a
+dialog whose buttons are "Move to Trash" and "Done": choose Done, then allow it once in System Settings › Privacy &
+Security › "Open Anyway". Or clear the quarantine flag before the first launch (`xattr -d com.apple.quarantine
+/Applications/viw.app`, or install with `--no-quarantine`). Then `viw --set-default` makes viw the default app for its
+file types. The cask lives in [td72/homebrew-tap](https://github.com/td72/homebrew-tap); its `version` / `sha256` are
+bumped by hand per release.
+
+### From a release zip
 
 Download `viw-<version>-macos.zip` from [Releases](https://github.com/td72/viw/releases), unzip it and move `viw.app`
-to `~/Applications`. The app is signed ad hoc, not notarized, so Gatekeeper refuses it the first time: clear the
-quarantine flag once, then link the CLI and (optionally) make viw the default app for its file types.
+to `~/Applications`. Clear the quarantine flag once (see above), then link the CLI and (optionally) make viw the
+default app for its file types.
 
 ```sh
 xattr -d com.apple.quarantine ~/Applications/viw.app
@@ -34,7 +48,7 @@ viw --set-default
 A `v*` tag builds the zip in CI (`.github/workflows/release.yml`, the same `mise r app` as below, with the version
 taken from the tag); a `.sha256` file sits next to each zip.
 
-### From source
+### From source (development)
 
 Needs Xcode Command Line Tools (Swift 5.9+) and [mise](https://mise.jdx.dev).
 
