@@ -284,6 +284,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/Theme.swift` | fonts, sizes, dynamic colors and the syntax color palette |
 | `Sources/viw/Config.swift` | `~/.config/viw/config.toml` reader |
 | `Sources/viw/FileWatcher.swift` | kqueue file watcher that survives atomic saves |
+| `.github/workflows/` | CI: `test.yml` runs the tests on PRs and main, `release.yml` builds the zip for a `v*` tag; `dependabot.yml` bumps the actions weekly and the SwiftPM lock monthly |
 
 Debug helpers: `viw --unzip archive.zip [entry]` lists an archive's entries or writes one to stdout; `viw --xlsx book.xlsx [N | name]`
 lists a workbook's sheets or writes one as TSV (`--formulas` appends `{=…}` to cells that have a formula). `viw --markdown file.docx|file.pptx|file.ipynb`
