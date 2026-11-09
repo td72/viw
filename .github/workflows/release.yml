@@ -11,8 +11,8 @@ jobs:
   release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.2.6
         with:
           install: false   # no mise-managed tools: Swift comes from Xcode
       - name: Swift version
@@ -21,7 +21,7 @@ jobs:
           swift --version
           echo "version=$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p')" >> "$GITHUB_OUTPUT"
       - name: Cache SwiftPM dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@v6.1.0
         with:
           path: |
             .build/checkouts
