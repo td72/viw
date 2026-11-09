@@ -10,3 +10,6 @@ mise.local.toml
 
 # scratch files (icon designs etc.)
 tmp/
+
+# extracted copy of examples/sample.zip (viw / --unzip output); the zip is the fixture
+examples/sample/
