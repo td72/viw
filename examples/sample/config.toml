@@ -1,0 +1,11 @@
+# viw configuration — copy to ~/.config/viw/config.toml
+# All keys are optional. Edit and press `r` in viw to apply.
+
+# font = "Hiragino Sans"        # body / heading font family (default: system font, SF)
+# code_font = "JetBrains Mono"  # code font family (default: SF Mono)
+# size = 16                     # base font size in points (8-48); `=` resets zoom to this
+# code_scale = 0.85             # code size relative to body
+# max_width = 948               # readable column width in points
+# detail_pane = "right"       # CSV detail pane: "right" (default) or "bottom"
+# pdf_mode = "scroll"         # PDF: "scroll" (continuous, default) or "page" (one page at a time; p toggles)
+# close_empty = "window"      # q / ⌘W on a window with no tabs: "window" (close it, default), "keep" (leave it open), "quit" (quit viw)
