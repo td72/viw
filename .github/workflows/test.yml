@@ -7,7 +7,7 @@ jobs:
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Swift version
         id: swift
         run: |
@@ -17,7 +17,7 @@ jobs:
       # plus the binary artifacts and workspace-state are enough for SwiftPM to build offline; the
       # git mirrors under .build/repositories are not needed and are left out.
       - name: Cache SwiftPM dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@v6.1.0
         with:
           path: |
             .build/checkouts
