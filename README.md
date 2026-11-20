@@ -181,7 +181,8 @@ gets the usual inline scrubber.
 
 Relative links to other Markdown or source files open in the same tab, and `H` (or `Ctrl-o`, or a two-finger swipe to
 the right) goes back to where the link was — the file and how far it was scrolled; `L` (or a swipe to the left) goes
-forward again. `#heading` links within a document are part of the same history. `http(s)` / `mailto` links open in the default
+forward again. `#heading` links within a document are part of the same history. ⌘-click opens a file link in a new tab
+instead, leaving the current one where it is. `http(s)` / `mailto` links open in the default
 browser; links to other local files are revealed in Finder rather than launched, and other URL schemes are ignored.
 Drop files on the window to open them in new tabs.
 
