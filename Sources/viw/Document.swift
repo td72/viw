@@ -11,6 +11,14 @@ enum Source {
         case .text(_, let t): return t
         }
     }
+    /// The same file (or both the piped text): going back within it only scrolls.
+    func isSameDocument(as other: Source) -> Bool {
+        switch (self, other) {
+        case (.file(let a), .file(let b)): return a == b
+        case (.text, .text): return true
+        default: return false
+        }
+    }
     /// Directory shown as the window subtitle, with `~` for home.
     var subtitle: String {
         guard let url else { return "" }
@@ -93,6 +101,12 @@ protocol DocumentView: AnyObject {
     var onOpenFile: ((URL) -> Void)? { get set }
     /// Open `url` in a new tab (zip entries); views that never do so keep the default.
     var onOpenTab: ((URL) -> Void)? { get set }
+    /// Called just before the view jumps within the document (a `#heading` link), so the
+    /// controller can remember where the reader was; views that never jump keep the default.
+    var onJump: (() -> Void)? { get set }
+    /// Where the content is scrolled to, for the back / forward history. Views that do not
+    /// restore a position keep the default (they come back at the top).
+    var scrollPosition: NSPoint { get set }
     /// Receiver of the vim keys typed into the content.
     var commands: ViewerCommands? { get set }
     /// Extra for the window subtitle ("3 / 12" pages, image size); `onStatusChange` fires when it changes.
@@ -155,6 +169,8 @@ protocol DocumentView: AnyObject {
 
 extension DocumentView {
     var onOpenTab: ((URL) -> Void)? { get { nil } set {} }
+    var onJump: (() -> Void)? { get { nil } set {} }
+    var scrollPosition: NSPoint { get { .zero } set {} }
 
     var status: String? { nil }
     func zoomView(_ delta: Int) -> Bool { false }
@@ -191,7 +207,15 @@ final class DocumentController: NSObject, ViewerCommands {
     private var theme = Theme.load()
     private(set) var documentView: DocumentView
     private var watcher: FileWatcher?
+    /// Where the links followed in this tab came from (`H` / `L`); reloads never touch it.
+    private var history = NavigationHistory<HistoryEntry>()
     weak var host: DocumentHost?
+
+    /// One stop in the tab's history: the document and how far it was scrolled.
+    private struct HistoryEntry {
+        let source: Source
+        let scroll: NSPoint
+    }
 
     var view: NSView { documentView.view }
     var title: String { source.title }
@@ -214,6 +238,7 @@ final class DocumentController: NSObject, ViewerCommands {
     private func bind(_ v: DocumentView) {
         v.onOpenFile = { [weak self] url in self?.open(url) }
         v.onOpenTab = { [weak self] url in self?.host?.open([url]) }
+        v.onJump = { [weak self] in self?.rememberPosition() }
         v.onStatusChange = { [weak self] in self.map { $0.host?.documentDidChangeTitle($0) } }
         v.commands = self
     }
@@ -255,13 +280,39 @@ final class DocumentController: NSObject, ViewerCommands {
         watcher = FileWatcher(path: url.path) { [weak self] in self?.load() }
     }
 
-    /// Replace this tab's document (relative links navigate in place).
+    /// Replace this tab's document (relative links navigate in place); `H` comes back.
     func open(_ url: URL) {
+        rememberPosition()
         source = .file(url.standardizedFileURL)
         kind = FileKind.of(source)
         load(preserveScroll: false)
         documentView.scrollToTop()
         startWatching()
+    }
+
+    // MARK: - History
+
+    private var position: HistoryEntry { HistoryEntry(source: source, scroll: documentView.scrollPosition) }
+
+    /// A link is about to be followed (to another file or to a heading): push where we are.
+    private func rememberPosition() { history.push(position) }
+
+    func goBack(_ n: Int) {
+        if let entry = history.goBack(n, from: position) { restore(entry) }
+    }
+
+    func goForward(_ n: Int) {
+        if let entry = history.goForward(n, from: position) { restore(entry) }
+    }
+
+    private func restore(_ entry: HistoryEntry) {
+        if !entry.source.isSameDocument(as: source) {
+            source = entry.source
+            kind = FileKind.of(source)
+            load(preserveScroll: false)
+            startWatching()
+        }
+        documentView.scrollPosition = entry.scroll
     }
 
     // MARK: - ViewerCommands

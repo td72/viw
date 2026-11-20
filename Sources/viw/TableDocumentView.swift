@@ -1046,6 +1046,8 @@ final class PaneCommands: ViewerCommands {
     func selectTab(index: Int) { forward.selectTab(index: index) }
     func zoom(_ delta: Int) { forward.zoom(delta) }
     func resetZoom() { forward.resetZoom() }
+    func goBack(_ n: Int) { forward.goBack(n) }
+    func goForward(_ n: Int) { forward.goForward(n) }
 }
 
 /// NSTableView that routes keys through the vim key map (same as VimTextView).
