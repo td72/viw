@@ -179,7 +179,8 @@ needed. A file opens paused, like QuickTime Player; Space plays / pauses (at the
 rotate the video, `y` copies the file. The badge and the subtitle show `time / length`; a hidden tab pauses. The mouse
 gets the usual inline scrubber.
 
-Relative links to other Markdown or source files open in the same tab. `http(s)` / `mailto` links open in the default
+Relative links to other Markdown or source files open in the same tab; ⌘-click opens them in a new tab instead,
+leaving the current one where it is. `http(s)` / `mailto` links open in the default
 browser; links to other local files are revealed in Finder rather than launched, and other URL schemes are ignored.
 Drop files on the window to open them in new tabs.
 

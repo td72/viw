@@ -17,6 +17,8 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     var view: NSView { scrollView }
     var onOpenFile: ((URL) -> Void)?
+    /// ⌘-click on a file link: open it in a new tab instead of replacing this one.
+    var onOpenTab: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
     /// Receiver of the vim keys typed into the text view.
     var commands: ViewerCommands? {
@@ -285,7 +287,10 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
             if exists, !isDir.boolValue, FileKind.of(url).isViewable {
-                onOpenFile?(url)
+                // The delegate runs while the click is being dispatched, so the current event
+                // carries the modifiers held at that moment. ⌘: a new tab; this one stays as it is.
+                let command = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
+                if command { onOpenTab?(url) } else { onOpenFile?(url) }
             } else if exists {
                 // Never hand arbitrary local files to Launch Services (a doc could link to a
                 // script or app bundle); reveal in Finder instead.
