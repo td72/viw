@@ -486,6 +486,8 @@ final class OverviewCommands: ViewerCommands {
     func selectTab(index: Int) { forward.selectTab(index: index) }
     func zoom(_ delta: Int) {}
     func resetZoom() {}
+    func goBack(_ n: Int) { forward.goBack(n) }
+    func goForward(_ n: Int) { forward.goForward(n) }
 }
 
 /// PDFView that routes keys through the vim key map.

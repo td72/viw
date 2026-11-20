@@ -51,6 +51,35 @@ final class VimTextView: NSTextView {
         guard let c = commands, keys.handle(event, c) else { return super.keyDown(with: event) }
     }
 
+    // MARK: - Swipe back / forward
+
+    /// Two-finger sideways swipes go back / forward through the tab's history (the document
+    /// view sets this; the table's detail pane does not). Follows the "Swipe between pages"
+    /// trackpad setting, like Safari.
+    var swipeNavigates = false
+    /// Between a gesture's first event and the first one that moves: its axis is not known yet.
+    private var swipeUndecided = false
+
+    override func scrollWheel(with event: NSEvent) {
+        guard swipeNavigates, NSEvent.isSwipeTrackingFromScrollEventsEnabled else { return super.scrollWheel(with: event) }
+        if event.phase == .began { swipeUndecided = true }
+        guard swipeUndecided, event.phase == .began || event.phase == .changed else {
+            if event.phase != .changed { swipeUndecided = false } // ended / cancelled / momentum
+            return super.scrollWheel(with: event)
+        }
+        let dx = abs(event.scrollingDeltaX), dy = abs(event.scrollingDeltaY)
+        guard dx > 0 || dy > 0 else { return super.scrollWheel(with: event) } // no direction yet
+        swipeUndecided = false
+        // Mostly vertical: an ordinary scroll, and it stays one for the rest of the gesture.
+        guard dx > dy else { return super.scrollWheel(with: event) }
+        event.trackSwipeEvent(options: [], dampenAmountThresholdMin: -1, max: 1) { [weak self] amount, phase, _, _ in
+            // `.ended`: the swipe went far enough (a short one is `.cancelled`). Fingers moving
+            // right (amount > 0) pull the previous page in, as in Safari.
+            guard phase == .ended, let commands = self?.commands else { return }
+            if amount > 0 { commands.goBack(1) } else if amount < 0 { commands.goForward(1) }
+        }
+    }
+
     // Do not let the find bar's Esc reach `cancelOperation` → beep
     override func cancelOperation(_ sender: Any?) {}
 }
