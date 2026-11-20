@@ -283,6 +283,12 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         guard let url = link as? URL ?? (link as? String).flatMap(URL.init(string:)) else { return false }
+        // "#heading" is resolved against the document, so it arrives as a file URL: catch it
+        // before the file branch, which would reload the document and land at the top.
+        if url.relativeString.hasPrefix("#"), let frag = url.fragment?.removingPercentEncoding {
+            jump(toHeading: frag)
+            return true
+        }
         if url.isFileURL {
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
