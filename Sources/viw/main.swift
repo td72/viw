@@ -178,10 +178,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Entry point
 
+/// The installed viw.app this executable lives in, also when it was started through the CLI
+/// symlink (~/.local/bin/viw, Homebrew's bin): `Bundle.main` is then the symlink's directory,
+/// which has no Info.plist. Nil for the bare binary (`swift build`).
+func installedAppBundle() -> Bundle? {
+    let exe = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
+    let bundleURL = exe.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    return bundleURL.pathExtension == "app" ? Bundle(url: bundleURL) : nil
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
 if args.first == "--version" {
     // From the app bundle's Info.plist (the release workflow fills it from the tag); the bare binary has none.
-    let info = Bundle.main.infoDictionary
+    let info = installedAppBundle()?.infoDictionary
     print("viw \(info?["CFBundleShortVersionString"] as? String ?? "dev")" + ((info?["CFBundleVersion"] as? String).map { " (\($0))" } ?? ""))
     exit(0)
 }
@@ -292,9 +301,7 @@ if args.first == "--xlsx", args.count >= 2 {
 // extension in Info.plist when none is given). Needs the installed app bundle; the CLI symlink
 // in ~/.local/bin resolves to it.
 if args.first == "--set-default" {
-    let exe = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
-    let bundleURL = exe.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    guard bundleURL.pathExtension == "app", let bundle = Bundle(url: bundleURL), let bundleID = bundle.bundleIdentifier,
+    guard let bundle = installedAppBundle(), let bundleID = bundle.bundleIdentifier,
           let types = bundle.infoDictionary?["CFBundleDocumentTypes"] as? [[String: Any]] else {
         FileHandle.standardError.write("viw: --set-default needs the installed app (mise r install, then viw --set-default)\n".data(using: .utf8)!)
         exit(1)
@@ -311,7 +318,7 @@ if args.first == "--set-default" {
         guard let type = UTType(filenameExtension: ext) else { errors[ext] = "no type for the extension"; continue }
         wanted.append((ext, type))
         group.enter()
-        NSWorkspace.shared.setDefaultApplication(at: bundleURL, toOpen: type) { error in
+        NSWorkspace.shared.setDefaultApplication(at: bundle.bundleURL, toOpen: type) { error in
             if let error { lock.lock(); errors[ext] = error.localizedDescription; lock.unlock() }
             group.leave()
         }
