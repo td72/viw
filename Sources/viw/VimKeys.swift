@@ -49,6 +49,9 @@ protocol ViewerCommands: AnyObject {
     func selectTab(index: Int)
     func zoom(_ delta: Int)
     func resetZoom()
+    /// `H` / `⌃o`, `L`: back / forward through the links followed in this tab (`3H`: three steps).
+    func goBack(_ n: Int)
+    func goForward(_ n: Int)
 }
 
 extension ViewerCommands {
@@ -96,6 +99,7 @@ struct VimKeyMap {
             case "b": c.scrollPages(-n)
             case "[": c.clearSelection() // like Esc
             case "w": pendingWindow = true
+            case "o": c.goBack(n) // vim's jump list; ⌃i is Tab (the next tab), so forward is `L` only
             default: break
             }
             return true
@@ -139,6 +143,8 @@ struct VimKeyMap {
         case "h": c.scrollHorizontal(-n)
         case "l": c.scrollHorizontal(n)
         case "$": c.scrollHorizontal(1_000_000)
+        case "H": c.goBack(n)
+        case "L": c.goForward(n)
         case "d": c.scrollHalfPages(n)
         case "u": c.scrollHalfPages(-n)
         case " ": if !c.togglePlayback() { flags.contains(.shift) ? c.scrollPages(-n) : c.scrollPages(n) }

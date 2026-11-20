@@ -17,6 +17,8 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     var view: NSView { scrollView }
     var onOpenFile: ((URL) -> Void)?
+    var onJump: (() -> Void)?
+    /// ⌘-click on a file link / a hint picked with `F`: open it in a new tab instead of replacing this one.
     var onOpenTab: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
     /// Receiver of the vim keys typed into the text view.
@@ -71,6 +73,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             .cursor: NSCursor.pointingHand,
         ]
         textView.delegate = self
+        textView.swipeNavigates = true // lines wrap, so a sideways swipe is free for back / forward
         scrollView.documentView = textView
 
         // Link hints are positioned for what is on screen: anything that moves the text ends them.
@@ -292,11 +295,21 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         guard let url = link as? URL ?? (link as? String).flatMap(URL.init(string:)) else { return false }
+        // "#heading" is resolved against the document, so it arrives as a file URL: catch it
+        // before the file branch, which would reload the document and land at the top.
+        if url.relativeString.hasPrefix("#"), let frag = url.fragment?.removingPercentEncoding {
+            jump(toHeading: frag)
+            return true
+        }
         if url.isFileURL {
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
             if exists, !isDir.boolValue, FileKind.of(url).isViewable {
-                (followInNewTab ? onOpenTab : onOpenFile)?(url)
+                // The delegate runs while the click is being dispatched, so the current event
+                // carries the modifiers held at that moment. ⌘: a new tab; this one stays as it is.
+                // A hint picked with `F` asks for the same (its key event carries no ⌘).
+                let command = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
+                if followInNewTab || command { onOpenTab?(url) } else { onOpenFile?(url) }
             } else if exists {
                 // Never hand arbitrary local files to Launch Services (a doc could link to a
                 // script or app bundle); reveal in Finder instead.
@@ -442,6 +455,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             }
         }
         if let r = found {
+            onJump?() // `H` returns to the link
             textView.layoutManager?.ensureLayout(for: textView.textContainer!)
             if let lm = textView.layoutManager, let tc = textView.textContainer {
                 let g = lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
@@ -469,6 +483,14 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     }
 
     private func scroll(by dy: CGFloat) { scroll(toY: clip.bounds.origin.y + dy) }
+
+    var scrollPosition: NSPoint {
+        get { clip.bounds.origin }
+        set {
+            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            scroll(toY: newValue.y)
+        }
+    }
 
     func scrollLines(_ n: Int) { scroll(by: CGFloat(n) * lineStep) }
     func scrollHalfPages(_ n: Int) { scroll(by: CGFloat(n) * clip.bounds.height / 2) }

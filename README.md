@@ -179,7 +179,10 @@ needed. A file opens paused, like QuickTime Player; Space plays / pauses (at the
 rotate the video, `y` copies the file. The badge and the subtitle show `time / length`; a hidden tab pauses. The mouse
 gets the usual inline scrubber.
 
-Relative links to other Markdown or source files open in the same tab. `http(s)` / `mailto` links open in the default
+Relative links to other Markdown or source files open in the same tab, and `H` (or `Ctrl-o`, or a two-finger swipe to
+the right) goes back to where the link was — the file and how far it was scrolled; `L` (or a swipe to the left) goes
+forward again. `#heading` links within a document are part of the same history. ⌘-click opens a file link in a new tab
+instead, leaving the current one where it is. `http(s)` / `mailto` links open in the default
 browser; links to other local files are revealed in Finder rather than launched, and other URL schemes are ignored.
 `f` labels the links in sight (home-row letters, two when there are many) so they can be followed from the keyboard,
 exactly as a click would; `F` does the same but opens a file viw can show in a new tab.
@@ -202,6 +205,7 @@ Drop files on the window to open them in new tabs.
 | `n` / `N` | next / previous match |
 | `y` | copy the selection |
 | `r` | reload (PDF / images: rotate clockwise; `R` counter-clockwise) |
+| `H` / `L`, `Ctrl-o` | back / forward through the links followed in this tab (file and scroll position); `3H` three steps. In a text document a two-finger swipe right / left does the same |
 | `o` | open file… (in a new tab) |
 | `gt` / `gT`, `Tab` / `Shift-Tab` | next / previous tab |
 | `3gt` | go to tab 3 |
