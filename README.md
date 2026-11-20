@@ -184,6 +184,8 @@ the right) goes back to where the link was — the file and how far it was scrol
 forward again. `#heading` links within a document are part of the same history. ⌘-click opens a file link in a new tab
 instead, leaving the current one where it is. `http(s)` / `mailto` links open in the default
 browser; links to other local files are revealed in Finder rather than launched, and other URL schemes are ignored.
+`f` labels the links in sight (home-row letters, two when there are many) so they can be followed from the keyboard,
+exactly as a click would; `F` does the same but opens a file viw can show in a new tab.
 Drop files on the window to open them in new tabs.
 
 ## Keys
@@ -198,7 +200,8 @@ Drop files on the window to open them in new tabs.
 | `5j`, `3d`, … | counts work with every motion |
 | `h` / `l`, `0` / `$` | horizontal scroll (when content is wider than the window) |
 | `/` | find (incremental find bar); `Esc` returns to the document |
-| `f` | filter rows (tables); in a text document the same as `/` |
+| `f` | filter rows (tables); in a text document link hints: every visible link gets a label, typing it follows the link (`Esc` cancels) |
+| `F` | link hints that open the link in a new tab (text documents) |
 | `n` / `N` | next / previous match |
 | `y` | copy the selection |
 | `r` | reload (PDF / images: rotate clockwise; `R` counter-clockwise) |

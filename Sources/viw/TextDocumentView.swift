@@ -18,7 +18,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     var view: NSView { scrollView }
     var onOpenFile: ((URL) -> Void)?
     var onJump: (() -> Void)?
-    /// ⌘-click on a file link: open it in a new tab instead of replacing this one.
+    /// ⌘-click on a file link / a hint picked with `F`: open it in a new tab instead of replacing this one.
     var onOpenTab: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
     /// Receiver of the vim keys typed into the text view.
@@ -75,11 +75,21 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         textView.delegate = self
         textView.swipeNavigates = true // lines wrap, so a sideways swipe is free for back / forward
         scrollView.documentView = textView
+
+        // Link hints are positioned for what is on screen: anything that moves the text ends them.
+        textView.keyInterceptor = { [weak self] event in self?.hintKey(event) ?? false }
+        textView.onFocusChange = { [weak self] focused in if !focused { self?.endHints() } }
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        textView.postsFrameChangedNotifications = true
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(viewDidMove(_:)), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        center.addObserver(self, selector: #selector(viewDidMove(_:)), name: NSView.frameDidChangeNotification, object: textView)
     }
 
     // MARK: - Loading
 
     func load(source: Source, kind: FileKind, theme: Theme, preserveScroll: Bool) {
+        endHints()
         let savedOrigin = scrollView.contentView.bounds.origin
         self.theme = theme
         textView.maxContentWidth = theme.maxWidth
@@ -297,8 +307,9 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             if exists, !isDir.boolValue, FileKind.of(url).isViewable {
                 // The delegate runs while the click is being dispatched, so the current event
                 // carries the modifiers held at that moment. ⌘: a new tab; this one stays as it is.
+                // A hint picked with `F` asks for the same (its key event carries no ⌘).
                 let command = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
-                if command { onOpenTab?(url) } else { onOpenFile?(url) }
+                if followInNewTab || command { onOpenTab?(url) } else { onOpenFile?(url) }
             } else if exists {
                 // Never hand arbitrary local files to Launch Services (a doc could link to a
                 // script or app bundle); reveal in Finder instead.
@@ -323,6 +334,112 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         NSWorkspace.shared.open(url)
         return true
     }
+
+    // MARK: - Link hints (`f` / `F`)
+
+    private struct Hint {
+        let label: String
+        let link: Any
+        let location: Int
+        let view: LinkHintLabel
+    }
+
+    private var hints: [Hint] = []
+    private var hintTyped = ""
+    private var hintNewTab = false
+    /// Set while a hint picked with `F` is being followed: a file viw can show opens in a new tab.
+    private var followInNewTab = false
+
+    /// The labels on screen (tests).
+    var hintLabels: [String] { hints.map(\.label) }
+
+    /// Label every link in sight; typing a label follows that link the way a click would.
+    private func beginHints(newTab: Bool) {
+        endHints()
+        let links = visibleLinks()
+        guard !links.isEmpty else { return }
+        hintNewTab = newTab
+        let visible = textView.visibleRect
+        for (label, link) in zip(LinkHints.labels(count: links.count), links) {
+            let v = LinkHintLabel(label: label)
+            // Over the start of the link, kept inside what is visible.
+            let x = min(max(link.rect.minX - 2, visible.minX), max(visible.minX, visible.maxX - v.frame.width))
+            let y = min(max(link.rect.minY - 1, visible.minY), max(visible.minY, visible.maxY - v.frame.height))
+            v.setFrameOrigin(NSPoint(x: x.rounded(), y: y.rounded()))
+            textView.addSubview(v)
+            hints.append(Hint(label: label, link: link.link, location: link.location, view: v))
+        }
+    }
+
+    private func endHints() {
+        guard !hints.isEmpty else { return }
+        hints.forEach { $0.view.removeFromSuperview() }
+        hints = []
+        hintTyped = ""
+    }
+
+    @objc private func viewDidMove(_ note: Notification) { endHints() }
+
+    func textViewDidChangeSelection(_ notification: Notification) { endHints() } // a click or drag in the text
+
+    /// Links whose first line is in sight, top to bottom: the link, where it starts in the text
+    /// and the rectangle of its first line (text view coordinates).
+    private func visibleLinks() -> [(link: Any, location: Int, rect: NSRect)] {
+        guard let lm = textView.layoutManager, let tc = textView.textContainer, let storage = textView.textStorage else { return [] }
+        let origin = textView.textContainerOrigin
+        let visible = textView.visibleRect
+        guard !visible.isEmpty else { return [] }
+        let glyphs = lm.glyphRange(forBoundingRect: visible.offsetBy(dx: -origin.x, dy: -origin.y), in: tc)
+        let chars = lm.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        var found: [(link: Any, location: Int, rect: NSRect)] = []
+        storage.enumerateAttribute(.link, in: chars) { value, range, _ in
+            guard let value, range.length > 0 else { return }
+            // A link that wraps is labelled where it starts: the part on its first line.
+            let g = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            guard g.length > 0 else { return }
+            var line = NSRange()
+            lm.lineFragmentRect(forGlyphAt: g.location, effectiveRange: &line)
+            let first = NSIntersectionRange(g, line)
+            let rect = lm.boundingRect(forGlyphRange: first, in: tc).offsetBy(dx: origin.x, dy: origin.y)
+            if rect.intersects(visible) { found.append((value, range.location, rect)) }
+        }
+        return found
+    }
+
+    /// Keys while the hints are up: letters narrow the labels down, the last letter of a label
+    /// follows its link, anything else cancels. Nothing reaches the vim keys.
+    private func hintKey(_ event: NSEvent) -> Bool {
+        guard !hints.isEmpty else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command) { endHints(); return false } // the menu bar's
+        let chars = (event.charactersIgnoringModifiers ?? "").lowercased()
+        if event.specialKey == .delete, !hintTyped.isEmpty {
+            hintTyped.removeLast()
+        } else if !flags.contains(.control), chars.count == 1, LinkHints.alphabet.contains(chars) {
+            hintTyped += chars
+        } else {
+            endHints() // Esc, ⌃[ and every key that is not part of a label
+            return true
+        }
+        let matching = hints.filter { $0.label.hasPrefix(hintTyped) }
+        if let hit = matching.first(where: { $0.label == hintTyped }) {
+            let newTab = hintNewTab
+            endHints()
+            followInNewTab = newTab
+            defer { followInNewTab = false }
+            _ = textView(textView, clickedOnLink: hit.link, at: hit.location)
+        } else if matching.isEmpty {
+            endHints()
+        } else {
+            for h in hints {
+                h.view.isHidden = !h.label.hasPrefix(hintTyped)
+                h.view.typed = hintTyped.count
+            }
+        }
+        return true
+    }
+
+    func followLinkInNewTab() { beginHints(newTab: true) }
 
     private func jump(toHeading slug: String) {
         guard let storage = textView.textStorage else { return }
@@ -407,7 +524,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     }
 
     func find() { finderAction(.showFindInterface) }
-    func filter() { find() } // no rows to filter; `f` behaves like `/`
+    func filter() { beginHints(newTab: false) } // no rows to filter: `f` labels the links instead
     func sortRows() {}
     func unsortRows() {}
     func findNext(reverse: Bool) { finderAction(reverse ? .previousMatch : .nextMatch) }
