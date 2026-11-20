@@ -10,8 +10,10 @@ protocol ViewerCommands: AnyObject {
     func scrollToBottom()
     func scrollToPercent(_ percent: Int)
     func find()
-    /// `f`: filter rows (tables); `⌃f` / Space / PgDn page forward instead.
+    /// `f`: filter rows (tables) / link hints (text); `⌃f` / Space / PgDn page forward instead.
     func filter()
+    /// `F`: link hints whose link opens in a new tab (text).
+    func followLinkInNewTab()
     /// `s` / `S`: sort rows / restore file order (tables).
     func sortRows()
     func unsortRows()
@@ -47,6 +49,10 @@ protocol ViewerCommands: AnyObject {
     func selectTab(index: Int)
     func zoom(_ delta: Int)
     func resetZoom()
+}
+
+extension ViewerCommands {
+    func followLinkInNewTab() {} // only the document controller has links to follow
 }
 
 /// vim-style key handling shared by the text view and the table view: counts (`5j`),
@@ -136,9 +142,10 @@ struct VimKeyMap {
         case "d": c.scrollHalfPages(n)
         case "u": c.scrollHalfPages(-n)
         case " ": if !c.togglePlayback() { flags.contains(.shift) ? c.scrollPages(-n) : c.scrollPages(n) }
-        case "b": c.scrollPages(-n) // forward is ⌃f / Space / PgDn; `f` is the filter (`b` kept for symmetry with ⌃b)
+        case "b": c.scrollPages(-n) // forward is ⌃f / Space / PgDn; `f` is the filter / link hints (`b` kept for symmetry with ⌃b)
         case "/": c.find()
         case "f": c.filter()
+        case "F": c.followLinkInNewTab()
         case "s": c.sortRows()
         case "S": c.unsortRows()
         case "n": c.findNext(reverse: false)

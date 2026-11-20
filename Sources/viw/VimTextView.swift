@@ -47,7 +47,11 @@ final class VimTextView: NSTextView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// Gets every key first while set (link hints); true = consumed, the vim keys never see it.
+    var keyInterceptor: ((NSEvent) -> Bool)?
+
     override func keyDown(with event: NSEvent) {
+        if let keyInterceptor, keyInterceptor(event) { return }
         guard let c = commands, keys.handle(event, c) else { return super.keyDown(with: event) }
     }
 

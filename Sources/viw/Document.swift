@@ -112,8 +112,10 @@ protocol DocumentView: AnyObject {
     func scrollToBottom()
     func scrollToPercent(_ percent: Int)
     func find()
-    /// `f`: filter rows, where the view has rows.
+    /// `f`: filter rows, where the view has rows; text documents show link hints instead.
     func filter()
+    /// `F`: link hints whose link opens in a new tab; views without links ignore it.
+    func followLinkInNewTab()
     /// `s` / `S`: sort rows / restore file order, where the view has rows.
     func sortRows()
     func unsortRows()
@@ -163,6 +165,7 @@ extension DocumentView {
     func togglePageMode() -> Bool { false }
     func toggleThumbnails() -> Bool? { nil }
     func selectSheet(offset: Int) {}
+    func followLinkInNewTab() {}
     var helpSections: [KeyHelp.Section] { [] }
     func togglePlayback() -> Bool { false }
     func toggleMute() {}
@@ -275,6 +278,7 @@ final class DocumentController: NSObject, ViewerCommands {
     func scrollToPercent(_ percent: Int) { documentView.scrollToPercent(percent) }
     func find() { documentView.find() }
     func filter() { documentView.filter() }
+    func followLinkInNewTab() { documentView.followLinkInNewTab() }
     func sortRows() { documentView.sortRows() }
     func unsortRows() { documentView.unsortRows() }
     func findNext(reverse: Bool) { documentView.findNext(reverse: reverse) }

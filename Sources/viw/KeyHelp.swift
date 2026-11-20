@@ -44,6 +44,7 @@ enum KeyHelp {
 
     static let text = Section(title: "Text", entries: [
         Entry("click a link", "files that viw can show open in this tab; others in their app"),
+        Entry("f / F", "link hints: type a link's label to follow it / to open it in a new tab (Esc cancels)"),
         Entry("⌘F", "the system find bar (same as /)"),
     ])
 
