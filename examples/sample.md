@@ -52,11 +52,11 @@ continues here.
 import AppKit
 
 let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
-window.title = "viw"   // native, no WebView
+window.title = "viw"   // native, the document is not a web page
 ```
 
 ```json
-{"name": "viw", "version": 1.5, "tags": ["markdown", "viewer"], "native": true, "webview": null}
+{"name": "viw", "version": 1.5, "tags": ["markdown", "viewer"], "native": true, "electron": null}
 ```
 
 ```sh
