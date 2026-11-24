@@ -11,7 +11,7 @@ VIW_BINDIR = "{{env.HOME}}/.local/bin"
 description = "Release build (swift build -c release)"
 alias = "b"
 run = "swift build -c release"
-sources = ["Package.swift", "Package.resolved", "Sources/**/*.swift"]
+sources = ["Package.swift", "Package.resolved", "Sources/**/*.swift", "Sources/viw/Mermaid/*"]
 outputs = [".build/release/viw"]
 
 [tasks.icon]
@@ -42,6 +42,8 @@ cp Resources/Info.plist "$VIW_APP/Contents/Info.plist"
 cp build/viw.icns "$VIW_APP/Contents/Resources/viw.icns"
 # tree-sitter highlight queries (Bundle.module looks in Contents/Resources)
 cp -R .build/release/CodeEditLanguages_CodeEditLanguages.bundle "$VIW_APP/Contents/Resources/"
+# mermaid.js and its page (MermaidRenderer looks in Contents/Resources too)
+cp -R .build/release/viw_viw.bundle "$VIW_APP/Contents/Resources/"
 codesign --force --sign - "$VIW_APP"
 '''
 

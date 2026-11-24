@@ -52,11 +52,11 @@ continues here.
 import AppKit
 
 let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
-window.title = "viw"   // native, no WebView
+window.title = "viw"   // native, the document is not a web page
 ```
 
 ```json
-{"name": "viw", "version": 1.5, "tags": ["markdown", "viewer"], "native": true, "webview": null}
+{"name": "viw", "version": 1.5, "tags": ["markdown", "viewer"], "native": true, "electron": null}
 ```
 
 ```sh
@@ -64,6 +64,25 @@ mise r install && viw README.md   # second viw → new tab
 ```
 
     indented code block
+
+## Diagrams
+
+```mermaid
+flowchart LR
+    md[Markdown] --> r{Renderer}
+    r -->|text| tv[NSTextView]
+    r -->|"```mermaid"| m[mermaid.js]
+    m -->|PDF| tv
+```
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant V as viw
+    U->>V: viw README.md
+    V-->>U: コードブロックのまま表示
+    V-->>U: 図に差し替え
+```
     second line
 
 ## Table
