@@ -6,10 +6,11 @@ A small, fast, native viewer for macOS with vim keybindings. It renders GitHub F
 files with syntax highlighting, CSV / TSV, Excel workbooks and SQLite databases as a grid, Word / RTF documents, Jupyter notebooks, zip archives as a tree, PDFs and images. It was called `mdv` until
 v0.2; the old `~/.config/mdv/config.toml` is still read until you move it.
 
-- **Native AppKit** — `NSTextView` + TextKit 1, no WebView, no Electron. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
+- **Native AppKit** — `NSTextView` + TextKit 1, no Electron; the document itself is never a web page. Opens in well under a second, a 4,500-line document parses, renders and lays out in ~150 ms.
 - **GFM** via [swift-markdown](https://github.com/swiftlang/swift-markdown) (cmark-gfm): tables, task lists, strikethrough, fenced code, block quotes, images, autolinks, front matter.
 - **Syntax highlighting** in fenced code blocks with [tree-sitter](https://tree-sitter.github.io) grammars from
   [CodeEditLanguages](https://github.com/CodeEditApp/CodeEditLanguages) (JSON / JSONL, YAML, TOML, shell, Swift, Python, JS / TS, Go, Rust, C / C++, SQL, HTML, CSS, … 30+ languages), in GitHub's light / dark colors. Highlighting runs off the main thread, so opening stays instant.
+- **Mermaid** — ` ```mermaid ` blocks are drawn as diagrams by the official [mermaid.js](https://mermaid.js.org) (bundled, offline), in the light / dark theme of the window.
 - **Vim keys** for navigation, plus normal trackpad / mouse-wheel scrolling.
 - **Live reload** — the file is watched with kqueue; saves (including atomic saves) re-render while keeping the scroll position.
 - Light / dark mode follows the system. Typography follows GitHub's markdown CSS (San Francisco 16pt, SF Mono at 85%, 1.5 line height, 948pt column, centered), and fonts are configurable.
@@ -105,6 +106,13 @@ anything with a known source extension (or a name like `Dockerfile`) as a single
 extensions as plain monospace text. `.json` is re-indented (invalid JSON, or `.jsonc` with comments, is shown as
 written); `.jsonl` / `.ndjson` shows each record in its own box, broken lines verbatim. Very large files are cut
 off at 1 MB of displayed text with a notice, so a 100 MB dump still opens in a few seconds.
+
+A ` ```mermaid ` block in Markdown is drawn as a diagram. viw ships mermaid.js and runs it in a web view that is
+never shown — started with the first diagram, so other documents do not pay for it — then puts each diagram into the
+text as a vector image. The document appears at once with the block as code; the diagram replaces it when it is
+ready (about a second for the first one after launch, a few dozen milliseconds after that), and diagrams drawn before
+are there immediately on a reload or a step back. A block mermaid cannot parse stays code. Diagrams follow the zoom
+level and light / dark; nothing is loaded from the network, and links inside a diagram are not followed.
 
 `.csv` / `.tsv` open as a table: the first row is the header, columns are sized from the data, and each column
 gets a type inferred from its cells (integer, number, boolean, date or text, shown in the header and the detail
@@ -286,6 +294,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/SingleInstance.swift` | CFMessagePort hand-off from a second `viw` process to the running one |
 | `Sources/viw/VimTextView.swift` | read-only text view (centered column) that feeds keys to the vim key map |
 | `Sources/viw/Renderer.swift` | swift-markdown AST → `NSAttributedString` (blocks are `NSTextTable` cells) |
+| `Sources/viw/MermaidRenderer.swift` | ` ```mermaid ` blocks: mermaid.js in an offscreen `WKWebView`, each diagram cut out as a PDF; cache by source, theme and width |
+| `Sources/viw/Mermaid/` | the vendored `mermaid.min.js`, the page that runs it, and `THIRD_PARTY_LICENSES.txt` for what it bundles (`scripts/update-mermaid.py VERSION` refreshes both) |
 | `Sources/viw/Highlighter.swift` | fence language → tree-sitter grammar, `highlights.scm` queries, capture spans |
 | `Sources/viw/JSONPretty.swift` | order-preserving JSON re-indenter (JSONSerialization only validates) |
 | `Sources/viw/Theme.swift` | fonts, sizes, dynamic colors and the syntax color palette |
@@ -303,4 +313,6 @@ highlight-query times and scroll offsets to stderr, `VIW_SNAPSHOT=out.png` rende
 
 ## License
 
-MIT
+MIT. The bundled mermaid.js and the packages inside it keep their own licenses (MIT, ISC, BSD-3-Clause, Apache-2.0,
+and EPL-2.0 for elkjs): see [`Sources/viw/Mermaid/THIRD_PARTY_LICENSES.txt`](Sources/viw/Mermaid/THIRD_PARTY_LICENSES.txt),
+which is also inside `viw.app`.

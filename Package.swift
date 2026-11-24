@@ -20,7 +20,9 @@ let package = Package(
                 .product(name: "Markdown", package: "swift-markdown"),
                 .product(name: "CodeEditLanguages", package: "CodeEditLanguages"),
             ],
-            path: "Sources/viw"
+            path: "Sources/viw",
+            // mermaid.js and the page that runs it (viw_viw.bundle; see MermaidRenderer).
+            resources: [.copy("Mermaid")]
         ),
         // Logic tests (`swift test` / `mise r test`): the executable target is imported @testable,
         // so no code moves; fixtures (xlsx / zip) come from Bundle.module.

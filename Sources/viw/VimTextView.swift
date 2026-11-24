@@ -29,6 +29,14 @@ final class VimTextView: NSTextView {
         }
     }
 
+    /// Light ⇄ dark: colors follow by themselves, drawn diagrams have to be redrawn.
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+
     private var keys = VimKeyMap()
     /// Called with true / false as the view gains / loses keyboard focus (the table's detail pane uses it).
     var onFocusChange: ((Bool) -> Void)?

@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Nothing leaves the machine: only the two scripts next to this page run, and no other resource loads. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<style>
+html, body { margin: 0; padding: 0; background: transparent; }
+/* As wide as the page: a gantt chart fills its container, the others have a size of their own. */
+#out { display: block; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script src="mermaid.min.js"></script>
+<script src="render.js"></script>
+</body>
+</html>

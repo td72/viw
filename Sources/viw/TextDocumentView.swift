@@ -10,6 +10,12 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     private var theme = Theme.load()
     /// Bumped on every load so a highlight pass for an older rendering is dropped.
     private var highlightGeneration = 0
+    /// While the colors of an asynchronous highlight pass are still to come, diagrams wait in
+    /// `deferredPlacements`: the pass addresses the text by position, and a diagram moves it.
+    private var highlightPending = false
+    private var deferredPlacements: [() -> Void] = []
+    /// Diagrams requested from `MermaidRenderer` and not yet answered (the snapshot waits for them).
+    private var diagramsPending = 0
 
     /// Text beyond this (UTF-16 units) is cut off with a notice. TextKit lays the whole
     /// document out before the window shows, and a million paragraphs take tens of seconds.
@@ -79,6 +85,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         // Link hints are positioned for what is on screen: anything that moves the text ends them.
         textView.keyInterceptor = { [weak self] event in self?.hintKey(event) ?? false }
         textView.onFocusChange = { [weak self] focused in if !focused { self?.endHints() } }
+        textView.onAppearanceChange = { [weak self] in self?.renderDiagrams() }
         scrollView.contentView.postsBoundsChangedNotifications = true
         textView.postsFrameChangedNotifications = true
         let center = NotificationCenter.default
@@ -148,7 +155,8 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             return shown
         }
 
-        let renderer = MarkdownRenderer(theme: theme, baseURL: baseURL)
+        let renderer = MarkdownRenderer(theme: theme, baseURL: baseURL,
+                                        columnWidth: textView.textContainer?.containerSize.width ?? 720, dark: isDark)
         let attributed = NSMutableAttributedString()
         var codeBlocks: [MarkdownRenderer.CodeBlockRef] = []
         switch kind {
@@ -210,6 +218,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         let syncHighlight = ProcessInfo.processInfo.environment["VIW_SNAPSHOT"] != nil
         highlight(codeBlocks, sync: syncHighlight)
         if timing, syncHighlight, !codeBlocks.isEmpty { lap("highlight (sync)") }
+        renderDiagrams()
 
         if preserveScroll, savedOrigin.y > 0 {
             textView.layoutManager?.ensureLayout(for: textView.textContainer!)
@@ -254,6 +263,9 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     private func highlight(_ blocks: [MarkdownRenderer.CodeBlockRef], sync: Bool) {
         highlightGeneration += 1
         let generation = highlightGeneration
+        highlightPending = false
+        deferredPlacements = []
+        diagramsPending = 0
         guard !blocks.isEmpty else { return }
         let theme = self.theme
         let compute = { () -> [(NSRange, NSColor)] in
@@ -273,15 +285,93 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
                 storage.addAttribute(.foregroundColor, value: color, range: range)
             }
             storage.endEditing()
+            self.highlightPending = false
+            let waiting = self.deferredPlacements
+            self.deferredPlacements = []
+            waiting.forEach { $0() }
         }
         if sync {
             apply(Highlighter.queue.sync(execute: compute))
         } else {
+            highlightPending = true
             Highlighter.queue.async {
                 let runs = compute()
                 DispatchQueue.main.async { apply(runs) }
             }
         }
+    }
+
+    // MARK: - Mermaid diagrams
+
+    private var isDark: Bool { textView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+
+    /// Draw every ```mermaid block that does not show its diagram for the current appearance:
+    /// the ones still shown as code after a load, all of them after light ⇄ dark. The document
+    /// is on screen meanwhile; each diagram lands when it is ready, and a block mermaid cannot
+    /// parse stays code.
+    private func renderDiagrams() {
+        guard let storage = textView.textStorage, storage.length > 0 else { return }
+        let dark = isDark
+        let generation = highlightGeneration
+        var blocks: [MermaidBlock] = []
+        storage.enumerateAttribute(MermaidBlock.key, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
+            guard let block = value as? MermaidBlock, block.shownDark != dark, !blocks.contains(where: { $0 === block }) else { return }
+            blocks.append(block)
+        }
+        for block in blocks {
+            diagramsPending += 1
+            MermaidRenderer.shared.render(block.request(dark: dark)) { [weak self] outcome in
+                guard let self, generation == self.highlightGeneration else { return }
+                self.diagramsPending -= 1
+                guard case .image(let image) = outcome else {
+                    if case .failed(let why) = outcome, ProcessInfo.processInfo.environment["VIW_TIMING"] != nil {
+                        FileHandle.standardError.write("mermaid: \(why.split(separator: "\n").first ?? "")\n".data(using: .utf8)!)
+                    }
+                    return
+                }
+                if self.highlightPending {
+                    self.deferredPlacements.append { [weak self] in self?.place(image, for: block, dark: dark) }
+                } else {
+                    self.place(image, for: block, dark: dark)
+                }
+            }
+        }
+    }
+
+    /// Put the diagram where the block's code (or its diagram for the other appearance) is.
+    /// What is on screen stays where it is: a block above the visible part changes height
+    /// without moving the text the reader is looking at.
+    private func place(_ image: NSImage, for block: MermaidBlock, dark: Bool) {
+        guard let storage = textView.textStorage, let lm = textView.layoutManager, let tc = textView.textContainer,
+              dark == isDark, block.shownDark != dark else { return }
+        var found: NSRange?
+        storage.enumerateAttribute(MermaidBlock.key, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            if value as AnyObject === block { found = found.map { NSUnionRange($0, range) } ?? range }
+        }
+        guard let range = found else { return }
+        endHints()
+
+        let top = clip.bounds.origin.y - textView.textContainerOrigin.y
+        let before = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil), in: tc)
+        let heightBefore = lm.usedRect(for: tc).height
+        storage.replaceCharacters(in: range, with: block.attributed(image, font: theme.body))
+        block.shownDark = dark
+        lm.ensureLayout(for: tc)
+        if clip.bounds.origin.y > 0, before.maxY <= top {
+            scroll(by: lm.usedRect(for: tc).height - heightBefore)
+        }
+    }
+
+    /// Diagrams still on their way (tests).
+    var diagramsInFlight: Int { diagramsPending + deferredPlacements.count }
+
+    /// How far below the top of the visible part the first occurrence of `text` is (tests).
+    func visibleOffset(of text: String) -> CGFloat? {
+        guard let lm = textView.layoutManager, let tc = textView.textContainer else { return nil }
+        let r = (textView.string as NSString).range(of: text)
+        guard r.location != NSNotFound else { return nil }
+        let rect = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil), in: tc)
+        return rect.minY + textView.textContainerOrigin.y - clip.bounds.origin.y
     }
 
     private func show(error: String) {
@@ -560,6 +650,11 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         guard path != "/dev/null" else { return }
         if let w = ProcessInfo.processInfo.environment["VIW_SNAPSHOT_WIDTH"].flatMap(Double.init) {
             textView.setFrameSize(NSSize(width: CGFloat(w), height: textView.frame.height))
+        }
+        // Diagrams are drawn by a web view that answers on the main run loop: let it turn.
+        let deadline = Date().addingTimeInterval(20)
+        while diagramsPending > 0 || !deferredPlacements.isEmpty, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let bounds = textView.bounds

@@ -9,6 +9,9 @@ final class MarkdownRenderer {
     private let baseURL: URL?
     private var out = NSMutableAttributedString()
     private let maxImageWidth: CGFloat
+    /// Width of the text column: what a Mermaid diagram may take.
+    private let columnWidth: CGFloat
+    private let dark: Bool
 
     /// A fenced code block with a known language, to be syntax-highlighted after the fact
     /// (see `DocumentController.highlight`). `range` is in the string `render` returned.
@@ -39,10 +42,12 @@ final class MarkdownRenderer {
         var link: URL?
     }
 
-    init(theme: Theme, baseURL: URL?, maxImageWidth: CGFloat = 720) {
+    init(theme: Theme, baseURL: URL?, maxImageWidth: CGFloat = 720, columnWidth: CGFloat = 720, dark: Bool = false) {
         self.theme = theme
         self.baseURL = baseURL
         self.maxImageWidth = maxImageWidth
+        self.columnWidth = columnWidth
+        self.dark = dark
     }
 
     // MARK: - Entry
@@ -83,6 +88,7 @@ final class MarkdownRenderer {
         switch node {
         case let p as Paragraph: paragraph(p, ctx)
         case let h as Heading: heading(h, ctx)
+        case let c as CodeBlock where Self.isMermaid(c.language): mermaid(c.code, ctx)
         case let c as CodeBlock: codeBlock(c.code, ctx, dim: false, language: c.language)
         case let h as HTMLBlock: codeBlock(h.rawHTML, ctx, dim: true)
         case let q as BlockQuote: quote(q, ctx)
@@ -173,6 +179,31 @@ final class MarkdownRenderer {
                                            code: text, language: language))
         }
         out.append(block)
+    }
+
+    static func isMermaid(_ info: String?) -> Bool {
+        info?.split(whereSeparator: { $0 == " " || $0 == "\t" }).first?.lowercased() == "mermaid"
+    }
+
+    /// A ```mermaid block: the diagram when it has been drawn before, otherwise its code, which
+    /// the text view swaps for the diagram once `MermaidRenderer` has drawn it. Either way the
+    /// text carries the `MermaidBlock`, so it can be found again (see `TextDocumentView.place`).
+    private func mermaid(_ code: String, _ ctx: Context) {
+        flushMarker(ctx)
+        let style = paragraphStyle(ctx)
+        style.paragraphSpacing = theme.baseSize
+        style.lineSpacing = 0
+        // The column minus the indent, and minus the bar and padding of each enclosing quote.
+        let room = columnWidth - ctx.indent - CGFloat(ctx.blocks.count) * (theme.baseSize + 3)
+        let block = MermaidBlock(source: code, style: style, width: max(120, room), scale: theme.baseSize / 16)
+        if let image = MermaidRenderer.shared.cached(block.request(dark: dark)) {
+            block.shownDark = dark
+            out.append(block.attributed(image, font: theme.body))
+            return
+        }
+        let start = out.length
+        codeBlock(code, ctx, dim: false)
+        out.addAttribute(MermaidBlock.key, value: block, range: NSRange(location: start, length: out.length - start))
     }
 
     private func quote(_ q: BlockQuote, _ ctx: Context) {
