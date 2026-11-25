@@ -318,6 +318,28 @@ final class DocumentController: NSObject, ViewerCommands {
         documentView.scrollPosition = entry.scroll
     }
 
+    // MARK: - Swipe
+
+    /// The slide under way, and which way it went.
+    private var swipe: (transition: SwipeTransition, back: Bool)?
+
+    func swipeBegan(back: Bool) -> Bool {
+        guard swipe == nil, back ? history.canGoBack : history.canGoForward else { return false }
+        let leaving = view.snapshotImage()
+        if back { goBack(1) } else { goForward(1) }
+        swipe = (SwipeTransition(leaving: leaving, page: view, back: back), back)
+        return true
+    }
+
+    func swipeMoved(_ progress: CGFloat) { swipe?.transition.move(to: progress) }
+
+    func swipeEnded(completed: Bool) {
+        guard let (transition, back) = swipe else { return }
+        swipe = nil
+        transition.end()
+        if !completed { if back { goForward(1) } else { goBack(1) } }
+    }
+
     // MARK: - ViewerCommands
 
     func scrollLines(_ n: Int) { documentView.scrollLines(n) }

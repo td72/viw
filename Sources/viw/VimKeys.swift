@@ -52,9 +52,20 @@ protocol ViewerCommands: AnyObject {
     /// `H` / `⌃o`, `L`: back / forward through the links followed in this tab (`3H`: three steps).
     func goBack(_ n: Int)
     func goForward(_ n: Int)
+    /// A two-finger swipe back / forward, sliding the pages like Safari: `swipeBegan` goes
+    /// there at once (false: nowhere to go), `swipeMoved` follows the fingers (0 … 1) and
+    /// `swipeEnded` settles it — a swipe that was not completed returns to where it began.
+    func swipeBegan(back: Bool) -> Bool
+    func swipeMoved(_ progress: CGFloat)
+    func swipeEnded(completed: Bool)
 }
 
 extension ViewerCommands {
+    // Only the document controller slides pages.
+    func swipeBegan(back: Bool) -> Bool { false }
+    func swipeMoved(_ progress: CGFloat) {}
+    func swipeEnded(completed: Bool) {}
+
     func followLinkInNewTab() {} // only the document controller has links to follow
 }
 

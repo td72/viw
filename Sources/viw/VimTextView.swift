@@ -84,11 +84,20 @@ final class VimTextView: NSTextView {
         swipeUndecided = false
         // Mostly vertical: an ordinary scroll, and it stays one for the rest of the gesture.
         guard dx > dy else { return super.scrollWheel(with: event) }
-        event.trackSwipeEvent(options: [], dampenAmountThresholdMin: -1, max: 1) { [weak self] amount, phase, _, _ in
-            // `.ended`: the swipe went far enough (a short one is `.cancelled`). Fingers moving
-            // right (amount > 0) pull the previous page in, as in Safari.
-            guard phase == .ended, let commands = self?.commands else { return }
-            if amount > 0 { commands.goBack(1) } else if amount < 0 { commands.goForward(1) }
+        // Held strongly for the gesture: a swipe forward into another kind of file replaces
+        // this view, and the slide still has to be finished.
+        guard let commands else { return }
+        var sliding: Bool? // nil until the direction is known; false: nowhere to go that way
+        var completed = false
+        event.trackSwipeEvent(options: .lockDirection, dampenAmountThresholdMin: -1, max: 1) { amount, phase, isComplete, _ in
+            // Fingers moving right (amount > 0) pull the previous page in, as in Safari. The
+            // page follows the fingers, and after they lift `amount` runs on to ±1 (`.ended`:
+            // the swipe went far enough) or back to 0 (`.cancelled`) until `isComplete`.
+            if sliding == nil, amount != 0 { sliding = commands.swipeBegan(back: amount > 0) }
+            guard sliding == true else { return }
+            if phase == .ended { completed = true }
+            commands.swipeMoved(abs(amount))
+            if isComplete { commands.swipeEnded(completed: completed) }
         }
     }
 
