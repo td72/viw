@@ -5,7 +5,18 @@ import Markdown
 /// plain files, in an NSTextView (TextKit 1) inside a scroll view. Owns rendering, the
 /// asynchronous syntax highlighting, link handling, scrolling, find and the debug snapshot.
 final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
+    /// The text and, when it is open, the table of contents beside (or below) it.
+    private let root = LayoutView(frame: NSRect(x: 0, y: 0, width: 880, height: 960))
     private let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 880, height: 960))
+    private let toc = TOCPane()
+    /// The document's headings in order (the pane shows them as a tree).
+    private var headings: [TOCHeading] = []
+    /// Where each heading starts in the text; nil when the text changed since it was worked out.
+    private var headingStarts: [ObjectIdentifier: Int]?
+    private var tocOpen = false
+    /// The last `]]` / `[[` and where it left the text, so a run of them keeps counting
+    /// headings at the end of the document, where the text cannot scroll any further.
+    private var lastMotion: (index: Int, y: CGFloat)?
     private let textView = VimTextView(usingTextLayoutManager: false)
     private var theme = Theme.load()
     /// Bumped on every load so a highlight pass for an older rendering is dropped.
@@ -21,7 +32,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     /// document out before the window shows, and a million paragraphs take tens of seconds.
     static let maxDisplayLength = 1 << 20
 
-    var view: NSView { scrollView }
+    var view: NSView { root }
     var onOpenFile: ((URL) -> Void)?
     var onJump: (() -> Void)?
     /// ⌘-click on a file link / a hint picked with `F`: open it in a new tab instead of replacing this one.
@@ -30,7 +41,10 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     /// Receiver of the vim keys typed into the text view.
     var commands: ViewerCommands? {
         get { textView.commands }
-        set { textView.commands = newValue }
+        set {
+            textView.commands = newValue
+            toc.outline.commands = newValue // the same keys; this view sends them to the pane while it has the focus
+        }
     }
 
     override init() {
@@ -39,12 +53,17 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     }
 
     func focus() { scrollView.window?.makeFirstResponder(textView) }
-    var helpSections: [KeyHelp.Section] { [KeyHelp.text] }
+    var helpSections: [KeyHelp.Section] { headings.isEmpty ? [KeyHelp.text] : [KeyHelp.text, KeyHelp.toc] }
 
     // MARK: - Views
 
     private func buildViews() {
-        scrollView.autoresizingMask = [.width, .height]
+        root.autoresizingMask = [.width, .height]
+        root.onLayout = { [weak self] in self?.layoutRoot() }
+        root.addSubview(scrollView)
+        toc.view.isHidden = true
+        toc.onPick = { [weak self] heading in self?.pick(heading) }
+        root.addSubview(toc.view)
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -99,6 +118,9 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         endHints()
         let savedOrigin = scrollView.contentView.bounds.origin
         self.theme = theme
+        tocOpen = theme.tocOpen
+        toc.font = .systemFont(ofSize: (theme.baseSize * 0.8125).rounded())
+        toc.onRight = theme.detailPaneOnRight
         textView.maxContentWidth = theme.maxWidth
         textView.relayoutColumn()
         var kind = kind
@@ -208,6 +230,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         lap("render")
 
         textView.textStorage?.setAttributedString(attributed)
+        collectHeadings()
         lap("setAttributedString")
         // Lay everything out now, before the display cycle gets a chance to. TextKit 1 filling
         // layout holes from a display request (setNeedsDisplay, cursor tracking) invalidates the
@@ -224,6 +247,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             textView.layoutManager?.ensureLayout(for: textView.textContainer!)
             scroll(toY: savedOrigin.y)
         }
+        followScroll()
     }
 
     /// Word / RTF / OpenDocument: the attributed string NSAttributedString reads, restyled for
@@ -249,6 +273,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
                 attributes: [.font: theme.body, .foregroundColor: theme.secondary, .paragraphStyle: style]))
         }
         textView.textStorage?.setAttributedString(attributed)
+        collectHeadings()
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         highlight([], sync: true) // no code blocks; bumps the generation so an older highlight pass cannot land
         if preserveScroll, savedOrigin.y > 0 {
@@ -355,6 +380,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         let before = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil), in: tc)
         let heightBefore = lm.usedRect(for: tc).height
         storage.replaceCharacters(in: range, with: block.attributed(image, font: theme.body))
+        headingStarts = nil // everything after the block moved
         block.shownDark = dark
         lm.ensureLayout(for: tc)
         if clip.bounds.origin.y > 0, before.maxY <= top {
@@ -379,6 +405,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
             .font: theme.body, .foregroundColor: NSColor.systemRed,
         ])
         textView.textStorage?.setAttributedString(s)
+        collectHeadings()
     }
 
     // MARK: - NSTextViewDelegate
@@ -468,7 +495,10 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         hintTyped = ""
     }
 
-    @objc private func viewDidMove(_ note: Notification) { endHints() }
+    @objc private func viewDidMove(_ note: Notification) {
+        endHints()
+        followScroll()
+    }
 
     func textViewDidChangeSelection(_ notification: Notification) { endHints() } // a click or drag in the text
 
@@ -531,7 +561,10 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     func followLinkInNewTab() { beginHints(newTab: true) }
 
+    /// A `#fragment` link: the heading with that anchor, else (text that is not Markdown) the
+    /// first paragraph that reads the same.
     private func jump(toHeading slug: String) {
+        if let h = TOC.heading(for: slug, in: headings) { return jump(to: h) }
         guard let storage = textView.textStorage else { return }
         let wanted = slug.lowercased().replacingOccurrences(of: "-", with: " ")
         let text = storage.string as NSString
@@ -546,14 +579,171 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         }
         if let r = found {
             onJump?() // `H` returns to the link
-            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
-            if let lm = textView.layoutManager, let tc = textView.textContainer {
-                let g = lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
-                let rect = lm.boundingRect(forGlyphRange: g, in: tc)
-                scroll(toY: rect.minY)
-            }
+            if let y = top(ofCharacterAt: r.location) { scroll(toY: y) }
         }
     }
+
+    /// Where the line holding character `location` starts, as a scroll position.
+    private func top(ofCharacterAt location: Int) -> CGFloat? {
+        guard let lm = textView.layoutManager, let tc = textView.textContainer, let storage = textView.textStorage,
+              location < storage.length else { return nil }
+        lm.ensureLayout(for: tc)
+        let g = lm.glyphRange(forCharacterRange: NSRange(location: location, length: 1), actualCharacterRange: nil)
+        return lm.boundingRect(forGlyphRange: g, in: tc).minY
+    }
+
+    // MARK: - Table of contents
+
+    var headingMotions: Bool { true }
+    /// The headings found in the document, in order (tests).
+    var headingTitles: [String] { headings.map(\.title) }
+    private var tocFocused: Bool { root.window?.firstResponder === toc.outline }
+    private var tocShown: Bool { tocOpen && !headings.isEmpty }
+
+    /// The scroll view and the pane inside `root`: the pane takes a fixed share on the right
+    /// (or at the bottom, with the detail panes' `I`) and the text the rest.
+    private func layoutRoot() {
+        let b = root.bounds
+        guard tocShown else {
+            toc.view.isHidden = true
+            scrollView.frame = b
+            return
+        }
+        toc.view.isHidden = false
+        if toc.onRight {
+            let w = min(280, (b.width * 0.4).rounded())
+            scrollView.frame = NSRect(x: 0, y: 0, width: b.width - w, height: b.height)
+            toc.view.frame = NSRect(x: b.width - w, y: 0, width: w, height: b.height)
+        } else {
+            let h = min(220, (b.height * 0.4).rounded())
+            toc.view.frame = NSRect(x: 0, y: 0, width: b.width, height: h)
+            scrollView.frame = NSRect(x: 0, y: h, width: b.width, height: b.height - h)
+        }
+        toc.layout()
+    }
+
+    /// Read the headings back from the marks the renderer left in the text.
+    private func collectHeadings() {
+        var marks: [HeadingMark] = []
+        if let storage = textView.textStorage {
+            storage.enumerateAttribute(.viwHeading, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
+                if let mark = value as? HeadingMark, marks.last !== mark { marks.append(mark) }
+            }
+        }
+        let built = TOC.build(marks)
+        headings = built.all
+        headingStarts = nil
+        lastMotion = nil
+        let hadFocus = tocFocused
+        toc.set(all: built.all, roots: built.roots)
+        layoutRoot()
+        if hadFocus, !tocShown { focus() } // the reloaded file has no headings left
+    }
+
+    private func start(of heading: TOCHeading) -> Int? {
+        if headingStarts == nil, let storage = textView.textStorage {
+            var starts: [ObjectIdentifier: Int] = [:]
+            storage.enumerateAttribute(.viwHeading, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+                if let mark = value as? HeadingMark, starts[ObjectIdentifier(mark)] == nil { starts[ObjectIdentifier(mark)] = range.location }
+            }
+            headingStarts = starts
+        }
+        return headingStarts?[ObjectIdentifier(heading.mark)]
+    }
+
+    /// Scroll to `heading`; `H` comes back to where the reader was.
+    private func jump(to heading: TOCHeading) {
+        guard let location = start(of: heading), let y = top(ofCharacterAt: location) else { return }
+        onJump?()
+        scroll(toY: y)
+    }
+
+    /// Enter / double click in the pane: go there and read on.
+    private func pick(_ heading: TOCHeading) {
+        jump(to: heading)
+        focus()
+    }
+
+    /// The section at the top of what is on screen (the last heading at the very end, where
+    /// the text cannot scroll far enough to bring it up).
+    private var currentHeading: TOCHeading? {
+        guard !headings.isEmpty, let lm = textView.layoutManager, let tc = textView.textContainer else { return nil }
+        if clip.bounds.maxY >= (scrollView.documentView?.frame.height ?? 0) - 1, clip.bounds.minY > 0 { return headings.last }
+        // A heading scrolled to has its first line exactly here (the text container starts one
+        // inset below the top of the view): look just inside that line.
+        let probe = NSPoint(x: tc.containerSize.width / 2, y: clip.bounds.minY + 4)
+        let index = lm.characterIndexForGlyph(at: lm.glyphIndex(for: probe, in: tc))
+        return headings.last { (start(of: $0) ?? .max) <= index }
+    }
+
+    /// The pane's selection follows the reading position, unless the reader is in the pane.
+    private func followScroll() {
+        guard tocShown, !tocFocused, !toc.isFiltering else { return }
+        toc.show(current: currentHeading)
+    }
+
+    /// `]]` / `[[`: `n` headings on from the section being read. `[[` first goes back to the
+    /// start of that section, unless the text is already there.
+    func moveHeading(_ n: Int) {
+        guard !headings.isEmpty, n != 0 else { return }
+        let y = clip.bounds.minY
+        var target: Int
+        if let last = lastMotion, last.y == y {
+            target = last.index + n
+        } else {
+            let current = currentHeading.flatMap { h in headings.firstIndex { $0 === h } }
+            if n > 0 {
+                target = (current ?? -1) + n
+            } else {
+                guard let current else { return } // above the first heading
+                let atStart = (start(of: headings[current]).flatMap(top(ofCharacterAt:)) ?? 0) >= y - 1
+                target = current + n + (atStart ? 0 : 1)
+            }
+        }
+        target = max(0, min(headings.count - 1, target))
+        onJump?() // `H` comes back
+        // At the end of the document the text cannot scroll far enough to tell the last
+        // headings apart: keep going until it moves (or there is no heading left that way).
+        while true {
+            if let location = start(of: headings[target]), let top = top(ofCharacterAt: location) { scroll(toY: top) }
+            let next = target + (n > 0 ? 1 : -1)
+            guard clip.bounds.minY == y, headings.indices.contains(next) else { break }
+            target = next
+        }
+        lastMotion = (target, clip.bounds.minY)
+        toc.show(current: headings[target])
+    }
+
+    /// `t`: the pane and the keyboard with it; `t` again closes it. The choice is remembered.
+    func toggleThumbnails() -> Bool? {
+        guard !headings.isEmpty else {
+            Toast.show(in: root, "No headings", detail: "nothing for a table of contents")
+            return false
+        }
+        setTOC(open: !tocOpen, takeFocus: true)
+        return tocOpen
+    }
+
+    private func setTOC(open: Bool, takeFocus: Bool) {
+        tocOpen = open
+        Theme.saveTOC(open: open)
+        layoutRoot()
+        if open {
+            toc.applyExpansion()
+            if takeFocus { enterTOC() } else { toc.show(current: currentHeading) }
+        } else {
+            focus()
+        }
+    }
+
+    /// The keyboard into the pane, on the section being read (the first heading above them all).
+    private func enterTOC() {
+        toc.show(current: currentHeading)
+        if toc.selected == nil { toc.select(row: 0) }
+        root.window?.makeFirstResponder(toc.outline)
+    }
+
+    func fold(_ action: FoldAction) { if tocFocused { toc.fold(action) } }
 
     // MARK: - Scrolling
 
@@ -582,22 +772,28 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         }
     }
 
-    func scrollLines(_ n: Int) { scroll(by: CGFloat(n) * lineStep) }
-    func scrollHalfPages(_ n: Int) { scroll(by: CGFloat(n) * clip.bounds.height / 2) }
-    func scrollPages(_ n: Int) { scroll(by: CGFloat(n) * pageStep) }
-    func scrollToTop() { scroll(toY: 0) }
+    // While the table of contents has the keyboard, the motions move through it instead.
+    func scrollLines(_ n: Int) { if tocFocused { toc.move(by: n) } else { scroll(by: CGFloat(n) * lineStep) } }
+    func scrollHalfPages(_ n: Int) {
+        if tocFocused { toc.move(by: n * max(1, toc.rowsPerPage / 2)) } else { scroll(by: CGFloat(n) * clip.bounds.height / 2) }
+    }
+    func scrollPages(_ n: Int) { if tocFocused { toc.move(by: n * toc.rowsPerPage) } else { scroll(by: CGFloat(n) * pageStep) } }
+    func scrollToTop() { if tocFocused { toc.select(row: 0) } else { scroll(toY: 0) } }
 
     func scrollToBottom() {
+        if tocFocused { return toc.select(row: .max) }
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         scroll(toY: .greatestFiniteMagnitude)
     }
 
     func scrollToPercent(_ percent: Int) {
+        if tocFocused { return toc.select(row: (toc.rowCount - 1) * max(0, min(100, percent)) / 100) }
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         scroll(toY: maxY * CGFloat(percent) / 100)
     }
 
     func scrollHorizontal(_ n: Int) {
+        if tocFocused { return toc.sideways(n) } // h / l: fold / unfold
         guard let doc = scrollView.documentView, doc.frame.width > clip.bounds.width else { return }
         var o = clip.bounds.origin
         o.x = min(max(0, o.x + CGFloat(n) * theme.lineHeight * 2), doc.frame.width - clip.bounds.width)
@@ -613,13 +809,20 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
         textView.performTextFinderAction(item)
     }
 
-    func find() { finderAction(.showFindInterface) }
-    func filter() { beginHints(newTab: false) } // no rows to filter: `f` labels the links instead
+    func find() { if tocFocused { toc.beginFilter() } else { finderAction(.showFindInterface) } } // in the pane: narrow the headings down
+    func filter() { if !tocFocused { beginHints(newTab: false) } } // no rows to filter: `f` labels the links instead
     func sortRows() {}
     func unsortRows() {}
-    func findNext(reverse: Bool) { finderAction(reverse ? .previousMatch : .nextMatch) }
+    func findNext(reverse: Bool) { if !tocFocused { finderAction(reverse ? .previousMatch : .nextMatch) } }
 
     func copySelection() {
+        if tocFocused { // `y` in the pane: the heading
+            guard let h = toc.selected else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(h.title, forType: .string)
+            Toast.show(in: root, "Copied", detail: h.title)
+            return
+        }
         let r = textView.selectedRange()
         guard r.length > 0 else { return }
         textView.copy(nil)
@@ -637,12 +840,34 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
 
     func copyRow() { copySelection() }
 
+    /// Esc: in the pane, drop its filter, then go back to the text.
     func clearSelection() {
+        if tocFocused {
+            if toc.isFiltering { toc.clearFilter() } else { focus() }
+            return
+        }
         textView.setSelectedRange(NSRange(location: textView.selectedRange().location, length: 0))
     }
 
-    func toggleDetail() {} // nothing to inspect in a text document
-    func switchPane() {}
+    /// `.`: show / hide the table of contents, the keyboard staying where it is (in the text).
+    func toggleDetail() {
+        guard !headings.isEmpty else { return }
+        setTOC(open: !tocOpen, takeFocus: false)
+    }
+
+    /// Enter / `i` / `⌃w w`: from the text into the pane (opening it); in the pane, Enter goes
+    /// to the heading.
+    func switchPane() {
+        if tocFocused {
+            if let h = toc.selected { pick(h) } else { focus() }
+        } else if !headings.isEmpty {
+            if tocOpen {
+                enterTOC()
+            } else {
+                setTOC(open: true, takeFocus: true)
+            }
+        }
+    }
 
     // MARK: - Debug snapshot (VIW_SNAPSHOT=/path.png renders the whole document and quits)
 
@@ -678,4 +903,11 @@ enum Converted {
         default: throw Notebook.Error(description: "no conversion for \(url.lastPathComponent)")
         }
     }
+}
+
+/// A plain view that asks its owner to place the subviews whenever its size changes.
+final class LayoutView: NSView {
+    var onLayout: (() -> Void)?
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) { onLayout?() }
 }

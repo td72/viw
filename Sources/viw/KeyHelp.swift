@@ -50,6 +50,14 @@ enum KeyHelp {
         Entry("⌘F", "the system find bar (same as /)"),
     ])
 
+    static let toc = Section(title: "Table of contents (Markdown)", entries: [
+        Entry("t", "show the headings beside the text and move into them (t again: close; remembered)"),
+        Entry("]] / [[", "next / previous heading, without the pane (3]]: three on)"),
+        Entry("j / k   Enter   Esc  (in the pane)", "move   go to the heading   back to the text"),
+        Entry("h / l   zR / zM   /  (in the pane)", "fold / unfold   unfold / fold all   filter the headings"),
+        Entry("Enter / i   .   I", "into the pane   show / hide it   pane on the right / at the bottom"),
+    ])
+
     static let table = Section(title: "Table (CSV / xlsx / SQLite)", entries: [
         Entry("h / l   0 / $", "column cursor: the cell y copies and s sorts by"),
         Entry("f", "filter rows (Enter keeps the filter, Esc clears it)"),

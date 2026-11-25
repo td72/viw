@@ -210,6 +210,15 @@ browser; links to other local files are revealed in Finder rather than launched,
 exactly as a click would; `F` does the same but opens a file viw can show in a new tab.
 Drop files on the window to open them in new tabs.
 
+`t` opens a table of contents beside a Markdown document — its headings as a tree — and moves the keyboard into
+it: `j` / `k` move, Enter goes to the heading (and back to the text), `h` / `l` and vim's `zR` / `zM` fold and
+unfold, `/` narrows the headings down, and Esc returns to the text. While you read, the pane marks the section at
+the top of the window. `t` again closes it; whether it is open is remembered (`toc = "open"` in the config sets the
+default). From the text, Enter or `i` steps into the pane, `.` shows or hides it without moving the keyboard and
+`I` puts it at the bottom instead. `]]` / `[[` go to the next / previous heading without the pane (`3]]`: three on).
+Every jump is in the tab's history, so `H` comes back. Word, PowerPoint and notebook files get the same contents,
+and `#heading` links now land on the heading they name, duplicates (`#setup-1`) included.
+
 ## Keys
 
 | Key | Action |
@@ -228,6 +237,7 @@ Drop files on the window to open them in new tabs.
 | `y` | copy the selection |
 | `r` | reload (PDF / images: rotate clockwise; `R` counter-clockwise) |
 | `H` / `L`, `Ctrl-o` | back / forward through the links followed in this tab (file and scroll position); `3H` three steps. In a text document a two-finger swipe right / left does the same |
+| `t`, `]]` / `[[` | Markdown: the table of contents (`t` again closes it); next / previous heading (`3]]` three on) |
 | `o` | open file… (in a new tab) |
 | `gt` / `gT`, `Tab` / `Shift-Tab` | next / previous tab |
 | `3gt` | go to tab 3 |
@@ -280,6 +290,7 @@ code_scale = 0.85             # code size relative to body
 max_width = 948               # readable column width in points
 detail_pane = "right"         # default side for the CSV detail pane: "right" or "bottom" (`I` switches at runtime)
 pdf_mode = "scroll"           # PDF: "scroll" (continuous) or "page" (one page at a time; `p` switches at runtime)
+toc = "closed"                # Markdown table of contents: "closed" or "open" (`t` switches at runtime)
 close_empty = "window"        # `q` / ⌘W on a window with no tabs: "window" (close it), "keep" (leave it open), "quit" (quit viw)
 ```
 
@@ -320,6 +331,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/Mermaid/` | the vendored `mermaid.min.js`, the page that runs it, and `THIRD_PARTY_LICENSES.txt` for what it bundles (`scripts/update-mermaid.py VERSION` refreshes both) |
 | `Sources/viw/Highlighter.swift` | fence language → tree-sitter grammar, `highlights.scm` queries, capture spans |
 | `Sources/viw/JSONPretty.swift` | order-preserving JSON re-indenter (JSONSerialization only validates) |
+| `Sources/viw/TOC.swift` | Markdown table of contents: the heading tree, GitHub-style anchors, and the pane that shows it |
 | `Sources/viw/JSONTree.swift` | strict JSON parser into a tree that keeps key order and number spelling; jq paths, previews, array of objects → table |
 | `Sources/viw/JSONDocumentView.swift` | JSON / JSON Lines as a foldable tree (NSOutlineView) with a value pane |
 | `Sources/viw/Theme.swift` | fonts, sizes, dynamic colors and the syntax color palette |

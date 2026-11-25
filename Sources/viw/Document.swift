@@ -157,6 +157,9 @@ protocol DocumentView: AnyObject {
     /// The fold keys and `J` / `K`, where the view is a tree that folds (JSON).
     func fold(_ action: FoldAction)
     func moveSibling(_ n: Int)
+    /// `]]` / `[[` between headings, where the view has them (text).
+    var headingMotions: Bool { get }
+    func moveHeading(_ n: Int)
     /// `.`: show / hide a detail pane, where the view has one.
     func toggleDetail()
     /// Enter / `i` / `⌃w w`: move focus between the main view and its pane, where the view has one.
@@ -204,6 +207,8 @@ extension DocumentView {
     func copyColumn() {}
     func fold(_ action: FoldAction) {}
     func moveSibling(_ n: Int) {}
+    var headingMotions: Bool { false }
+    func moveHeading(_ n: Int) {}
     var helpSections: [KeyHelp.Section] { [] }
     func togglePlayback() -> Bool { false }
     func toggleMute() {}
@@ -413,6 +418,8 @@ final class DocumentController: NSObject, ViewerCommands {
     func copyColumn() { documentView.copyColumn() }
     func fold(_ action: FoldAction) { documentView.fold(action) }
     func moveSibling(_ n: Int) { documentView.moveSibling(n) }
+    var headingMotions: Bool { documentView.headingMotions }
+    func moveHeading(_ n: Int) { documentView.moveHeading(n) }
     func clearSelection() { documentView.clearSelection() }
     func toggleDetail() { documentView.toggleDetail() }
     func switchPane() { documentView.switchPane() }
