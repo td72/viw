@@ -76,7 +76,7 @@ Or just `mise r app` and drag `build/viw.app` wherever you like. `swift build -c
 ```sh
 viw README.md               # open a file (several files → several tabs)
 viw main.swift config.toml  # source files open as one highlighted code block
-viw data.json log.jsonl     # JSON is pretty-printed (key order kept); JSON Lines → one box per record
+viw data.json log.jsonl     # JSON / JSON Lines as a foldable tree (t: an array of objects as a table, p: text)
 viw export.csv data.tsv     # delimited text as a grid (RFC 4180 quoting, delimiter / encoding detected)
 viw book.xlsx               # Excel workbooks: the same grid, one sheet at a time (zip + XML read by viw itself)
 viw paper.pdf photo.png     # PDF (PDFKit) and images, fitted to the window
@@ -103,9 +103,22 @@ there are two or more tabs. Click a tab to select it, middle-click to close it.
 
 What a file is depends on its name: `.md` / `.markdown` / `.txt` and most extension-less files render as Markdown,
 anything with a known source extension (or a name like `Dockerfile`) as a single highlighted code block, and unknown
-extensions as plain monospace text. `.json` is re-indented (invalid JSON, or `.jsonc` with comments, is shown as
-written); `.jsonl` / `.ndjson` shows each record in its own box, broken lines verbatim. Very large files are cut
-off at 1 MB of displayed text with a notice, so a 100 MB dump still opens in a few seconds.
+extensions as plain monospace text. Very large files are cut off at 1 MB of displayed text with a notice, so a
+100 MB dump still opens in a few seconds.
+
+`.json` opens as a tree, after [jless](https://jless.io): one row per value, with key order, duplicate keys and the
+spelling of numbers as in the file. `j` / `k` move, `h` folds an object or array (or goes up to its parent) and `l`
+unfolds it (or steps in); Enter or Space toggles (so Space does not page here — `Ctrl-f` / `Ctrl-b` do). vim's
+fold keys work too: `za` / `zo` / `zc` for the node, `zR` / `zM` to unfold / fold the whole tree, and `2zR` to open
+two levels and fold the rest. `e` / `c` unfold / fold a node with everything inside it, and `J` / `K` go to the
+next / previous sibling, past whatever is open. A folded container shows a preview of what is inside
+(`{id: 1, name: "Alice", …}`), an open one its size, and the pane has the selected value in full (`.` hides it).
+`/` finds in keys and values. `y` copies the value — a string's text, an object or array as JSON — and `Y` its path
+as a jq filter (`.users[2].name`). `t` shows the array of objects the cursor is on or inside as a table, with one
+column per key: sorting, filtering and the visual mode of the grid all work there, and `t` again goes back to the
+tree where it was left. `p` switches to the re-indented, highlighted text and back. `.jsonl` / `.ndjson` is the
+same with one row per record (`t` makes a table of the whole file; a line that is not JSON is marked and kept).
+Files that are not valid JSON (`.jsonc` with comments) or larger than 32 MB are shown as text.
 
 A ` ```mermaid ` block in Markdown is drawn as a diagram. viw ships mermaid.js and runs it in a web view that is
 never shown — started with the first diagram, so other documents do not pay for it — then puts each diagram into the
@@ -307,6 +320,8 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/Mermaid/` | the vendored `mermaid.min.js`, the page that runs it, and `THIRD_PARTY_LICENSES.txt` for what it bundles (`scripts/update-mermaid.py VERSION` refreshes both) |
 | `Sources/viw/Highlighter.swift` | fence language → tree-sitter grammar, `highlights.scm` queries, capture spans |
 | `Sources/viw/JSONPretty.swift` | order-preserving JSON re-indenter (JSONSerialization only validates) |
+| `Sources/viw/JSONTree.swift` | strict JSON parser into a tree that keeps key order and number spelling; jq paths, previews, array of objects → table |
+| `Sources/viw/JSONDocumentView.swift` | JSON / JSON Lines as a foldable tree (NSOutlineView) with a value pane |
 | `Sources/viw/Theme.swift` | fonts, sizes, dynamic colors and the syntax color palette |
 | `Sources/viw/Config.swift` | `~/.config/viw/config.toml` reader |
 | `Sources/viw/FileWatcher.swift` | kqueue file watcher that survives atomic saves |

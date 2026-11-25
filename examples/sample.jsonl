@@ -1,0 +1,4 @@
+{"ts": "2026-11-25T09:00:00Z", "level": "info", "msg": "server started", "port": 8080}
+{"ts": "2026-11-25T09:00:03Z", "level": "warn", "msg": "slow query", "ms": 1250, "query": {"table": "users", "limit": 50}}
+{"ts": "2026-11-25T09:01:10Z", "level": "error", "msg": "connection reset", "retry": true}
+{"ts": "2026-11-25T09:02:00Z", "level": "info", "msg": "ユーザーがログイン", "user": "yamada"}

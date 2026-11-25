@@ -32,8 +32,8 @@ enum Source {
 enum FileKind {
     case markdown
     case code(String) // tree-sitter language (fence info string)
-    case json         // pretty-printed, highlighted as JSON
-    case jsonl        // JSON Lines: one pretty-printed record per block
+    case json         // a tree (JSONDocumentView); `p`: pretty-printed text, `t`: an array of objects as a table
+    case jsonl        // JSON Lines: the records as a tree; as text, one pretty-printed record per block
     case table        // CSV / TSV: grid view
     case workbook     // xlsx / xlsm: grid view with a sheet bar
     case database     // SQLite: grid view, one sheet per table / view
@@ -83,6 +83,14 @@ enum FileKind {
 
     static func of(_ source: Source) -> FileKind {
         if case .file(let url) = source { return of(url) } else { return .markdown }
+    }
+
+    /// JSON / JSON Lines: shown as a tree, as a table or as text.
+    var isJSON: Bool {
+        switch self {
+        case .json, .jsonl: return true
+        default: return false
+        }
     }
 
     /// Something viw can show as text (used to decide whether a clicked file link opens in place).
@@ -146,6 +154,9 @@ protocol DocumentView: AnyObject {
     func copyMarkdown() -> Bool
     /// `C`: the whole column under the cursor, where the view has columns (tables).
     func copyColumn()
+    /// The fold keys and `J` / `K`, where the view is a tree that folds (JSON).
+    func fold(_ action: FoldAction)
+    func moveSibling(_ n: Int)
     /// `.`: show / hide a detail pane, where the view has one.
     func toggleDetail()
     /// Enter / `i` / `⌃w w`: move focus between the main view and its pane, where the view has one.
@@ -191,6 +202,8 @@ extension DocumentView {
     func toggleVisual(_ mode: VisualMode) {}
     func copyMarkdown() -> Bool { false }
     func copyColumn() {}
+    func fold(_ action: FoldAction) {}
+    func moveSibling(_ n: Int) {}
     var helpSections: [KeyHelp.Section] { [] }
     func togglePlayback() -> Bool { false }
     func toggleMute() {}
@@ -222,6 +235,14 @@ final class DocumentController: NSObject, ViewerCommands {
     /// Where the links followed in this tab came from (`H` / `L`); reloads never touch it.
     private var history = NavigationHistory<HistoryEntry>()
     weak var host: DocumentHost?
+    /// How a JSON document is shown (`p` / `t` switch): `.table` is the array of objects at
+    /// `jsonTablePath`. JSON that does not parse is text whatever this says.
+    private enum JSONMode { case tree, text, table }
+    private var jsonMode = JSONMode.tree
+    private var jsonTablePath: [JSONNode.Step] = []
+    /// The other views of the same JSON file, kept so that switching back finds the tree
+    /// folded and scrolled as it was left.
+    private var parkedViews: [ObjectIdentifier: DocumentView] = [:]
 
     /// One stop in the tab's history: the document and how far it was scrolled.
     private struct HistoryEntry {
@@ -235,7 +256,7 @@ final class DocumentController: NSObject, ViewerCommands {
     init(source: Source) {
         self.source = source
         self.kind = FileKind.of(source)
-        self.documentView = Self.viewType(for: kind).init()
+        self.documentView = (kind.isJSON && JSONSource.read(source, kind) != nil ? JSONDocumentView.self : Self.viewType(for: kind)).init()
         super.init()
         bind(documentView)
         load()
@@ -267,6 +288,16 @@ final class DocumentController: NSObject, ViewerCommands {
         }
     }
 
+    /// The view for the document as it is now: `viewType(for:)`, except that JSON follows
+    /// `jsonMode` as far as the file allows (not JSON → text; no such array → the tree).
+    private func wantedViewType() -> DocumentView.Type {
+        guard kind.isJSON else { return Self.viewType(for: kind) }
+        guard jsonMode != .text, let root = JSONSource.read(source, kind) else { return TextDocumentView.self }
+        if jsonMode == .table, root.node(at: jsonTablePath)?.isTabular == true { return TableDocumentView.self }
+        jsonMode = .tree
+        return JSONDocumentView.self
+    }
+
     /// Window subtitle: the directory, plus the view's status (page, image size).
     var subtitle: String {
         [source.subtitle, documentView.status ?? ""].filter { !$0.isEmpty }.joined(separator: " — ")
@@ -276,12 +307,14 @@ final class DocumentController: NSObject, ViewerCommands {
 
     func load(preserveScroll: Bool = true) {
         theme = Theme.load() // re-read config on every (re)load so `r` picks up edits
-        let wanted = Self.viewType(for: kind)
+        let wanted = wantedViewType()
         if type(of: documentView) != wanted {
-            documentView = wanted.init()
+            if kind.isJSON { parkedViews[ObjectIdentifier(type(of: documentView))] = documentView }
+            documentView = parkedViews.removeValue(forKey: ObjectIdentifier(wanted)) ?? wanted.init()
             bind(documentView)
             host?.documentDidReplaceView(self)
         }
+        (documentView as? TableDocumentView)?.jsonPath = jsonTablePath
         documentView.load(source: source, kind: kind, theme: theme, preserveScroll: preserveScroll)
         host?.documentDidChangeTitle(self)
     }
@@ -297,9 +330,17 @@ final class DocumentController: NSObject, ViewerCommands {
         rememberPosition()
         source = .file(url.standardizedFileURL)
         kind = FileKind.of(source)
+        resetJSONViews()
         load(preserveScroll: false)
         documentView.scrollToTop()
         startWatching()
+    }
+
+    /// Another document: it starts as a tree, and the views parked for the last one go.
+    private func resetJSONViews() {
+        jsonMode = .tree
+        jsonTablePath = []
+        parkedViews = [:]
     }
 
     // MARK: - History
@@ -321,6 +362,7 @@ final class DocumentController: NSObject, ViewerCommands {
         if !entry.source.isSameDocument(as: source) {
             source = entry.source
             kind = FileKind.of(source)
+            resetJSONViews()
             load(preserveScroll: false)
             startWatching()
         }
@@ -369,6 +411,8 @@ final class DocumentController: NSObject, ViewerCommands {
     func toggleVisual(_ mode: VisualMode) { documentView.toggleVisual(mode) }
     func copyMarkdown() -> Bool { documentView.copyMarkdown() }
     func copyColumn() { documentView.copyColumn() }
+    func fold(_ action: FoldAction) { documentView.fold(action) }
+    func moveSibling(_ n: Int) { documentView.moveSibling(n) }
     func clearSelection() { documentView.clearSelection() }
     func toggleDetail() { documentView.toggleDetail() }
     func switchPane() { documentView.switchPane() }
@@ -394,6 +438,10 @@ final class DocumentController: NSObject, ViewerCommands {
 
     /// `p` / View › PDF Page View: one page at a time ⇄ continuous, remembered like the zoom level.
     func togglePageMode() {
+        if kind.isJSON { // `p`: the tree (or the table) ⇄ the pretty-printed text
+            jsonMode = jsonMode == .text ? .tree : .text
+            return load()
+        }
         guard documentView.togglePageMode() else { return }
         theme.pdfContinuous.toggle()
         theme.save()
@@ -401,7 +449,24 @@ final class DocumentController: NSObject, ViewerCommands {
     }
 
     /// `t` / View › PDF Thumbnails: the page overview.
-    func toggleThumbnails() { _ = documentView.toggleThumbnails() }
+    func toggleThumbnails() {
+        guard kind.isJSON else { _ = documentView.toggleThumbnails(); return }
+        // `t`: the array of objects under the cursor as a table, and back to the tree.
+        if jsonMode == .table {
+            jsonMode = .tree
+        } else {
+            // From the text, the cursor is where the tree was left.
+            let tree = (documentView as? JSONDocumentView) ?? (parkedViews[ObjectIdentifier(JSONDocumentView.self)] as? JSONDocumentView)
+            let root = JSONSource.read(source, kind)
+            guard let array = tree?.tableCandidate ?? (root?.isTabular == true ? root : nil) else {
+                Toast.show(in: view, "No array of objects here", detail: root == nil ? "the file is not valid JSON" : "put the cursor on one (or inside it) and press t")
+                return
+            }
+            jsonTablePath = array.steps
+            jsonMode = .table
+        }
+        load()
+    }
 
     /// `]` / `[` / View › Next / Previous Sheet (xlsx).
     func selectSheet(offset: Int) { documentView.selectSheet(offset: offset) }
@@ -409,7 +474,10 @@ final class DocumentController: NSObject, ViewerCommands {
     func showHelp() { host?.showHelp(for: self) }
     func togglePlayback() -> Bool { documentView.togglePlayback() }
     func toggleMute() { documentView.toggleMute() }
-    var helpSections: [KeyHelp.Section] { documentView.helpSections }
+    var helpSections: [KeyHelp.Section] {
+        // JSON shown as text or as a table: how to get back to the tree.
+        documentView.helpSections + (kind.isJSON && !(documentView is JSONDocumentView) ? [KeyHelp.jsonViews] : [])
+    }
 
     /// `I` / View › Detail Pane: right ⇄ bottom, remembered like the zoom level.
     func togglePanePosition() {
