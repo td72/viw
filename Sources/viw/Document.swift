@@ -140,6 +140,12 @@ protocol DocumentView: AnyObject {
     func copyRow()
     /// Esc: drop the selection (and any search state).
     func clearSelection()
+    /// `v` / `V` / `⌃v`: visual mode, where the view has cells to select (tables).
+    func toggleVisual(_ mode: VisualMode)
+    /// `m`: the visual selection as a Markdown table; false when there is none.
+    func copyMarkdown() -> Bool
+    /// `C`: the whole column under the cursor, where the view has columns (tables).
+    func copyColumn()
     /// `.`: show / hide a detail pane, where the view has one.
     func toggleDetail()
     /// Enter / `i` / `⌃w w`: move focus between the main view and its pane, where the view has one.
@@ -182,6 +188,9 @@ extension DocumentView {
     func toggleThumbnails() -> Bool? { nil }
     func selectSheet(offset: Int) {}
     func followLinkInNewTab() {}
+    func toggleVisual(_ mode: VisualMode) {}
+    func copyMarkdown() -> Bool { false }
+    func copyColumn() {}
     var helpSections: [KeyHelp.Section] { [] }
     func togglePlayback() -> Bool { false }
     func toggleMute() {}
@@ -357,6 +366,9 @@ final class DocumentController: NSObject, ViewerCommands {
     func findNext(reverse: Bool) { documentView.findNext(reverse: reverse) }
     func copySelection() { documentView.copySelection() }
     func copyRow() { documentView.copyRow() }
+    func toggleVisual(_ mode: VisualMode) { documentView.toggleVisual(mode) }
+    func copyMarkdown() -> Bool { documentView.copyMarkdown() }
+    func copyColumn() { documentView.copyColumn() }
     func clearSelection() { documentView.clearSelection() }
     func toggleDetail() { documentView.toggleDetail() }
     func switchPane() { documentView.switchPane() }
