@@ -53,7 +53,7 @@ final class TextDocumentView: NSObject, DocumentView, NSTextViewDelegate {
     }
 
     func focus() { scrollView.window?.makeFirstResponder(textView) }
-    var helpSections: [KeyHelp.Section] { headings.isEmpty ? [KeyHelp.text] : [KeyHelp.text, KeyHelp.toc] }
+    var helpSections: [KeyHelp.Section] { headings.isEmpty ? [KeyHelp.text] : [KeyHelp.text, KeyHelp.toc, KeyHelp.tocPane] }
 
     // MARK: - Views
 
