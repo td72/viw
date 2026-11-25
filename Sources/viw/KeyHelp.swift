@@ -63,6 +63,26 @@ enum KeyHelp {
         Entry("j / k   h / l   s  (in the pane)", "next / previous field   next / previous row   sort by the field"),
     ])
 
+    static let json = Section(title: "JSON / JSON Lines", entries: [
+        Entry("j / k   gg / G", "move through the tree"),
+        Entry("h / l", "fold the object / array (or go to its parent) / unfold (or step in)"),
+        Entry("Enter / Space / za", "fold / unfold (Space does not page here: ⌃f / ⌃b do)   zo / zc: unfold / fold"),
+        Entry("e / c", "unfold / fold the object or array with everything inside it"),
+        Entry("zR / zM   2zR", "unfold / fold the whole tree   two levels open, the rest folded"),
+        Entry("J / K", "next / previous sibling, past whatever is open (3J: three on)"),
+        Entry("/   n / N", "find in keys and values   next / previous match"),
+        Entry("y / Y", "copy the value (a string's text, an object / array as JSON) / its jq path (.items[2].id)"),
+        Entry("t", "the array of objects under the cursor as a table: sort, filter, visual mode (t again: back to the tree)"),
+        Entry("p", "pretty-printed text ⇄ the tree"),
+        Entry(".   I", "show / hide the pane (the value in full)   pane on the right / at the bottom"),
+    ])
+
+    /// JSON while it is shown as text or as a table.
+    static let jsonViews = Section(title: "JSON", entries: [
+        Entry("p", "pretty-printed text ⇄ the tree"),
+        Entry("t", "table ⇄ the tree"),
+    ])
+
     static let archive = Section(title: "Zip", entries: [
         Entry("j / k   gg / G", "move through the tree"),
         Entry("h / l", "fold the folder (or go to its parent) / unfold (or step in)"),

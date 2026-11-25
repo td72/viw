@@ -23,6 +23,10 @@ protocol ViewerCommands: AnyObject {
     func copyRow()
     /// `C`: the whole column under the cursor (tables).
     func copyColumn()
+    /// `za` / `zo` / `zc`, `e` / `c`, `zR` / `zM`: folds in a tree (JSON).
+    func fold(_ action: FoldAction)
+    /// `J` / `K`: the next / previous sibling in a tree, skipping what is inside (JSON).
+    func moveSibling(_ n: Int)
     /// `v` / `V` / `⌃v`: visual mode in a table — select a block of cells / whole rows / whole
     /// columns; `y` copies it as TSV, `Y` with the header row.
     func toggleVisual(_ mode: VisualMode)
@@ -78,6 +82,17 @@ extension ViewerCommands {
     func toggleVisual(_ mode: VisualMode) {}
     func copyMarkdown() -> Bool { false }
     func copyColumn() {}
+    // Trees only.
+    func fold(_ action: FoldAction) {}
+    func moveSibling(_ n: Int) {}
+}
+
+/// What the fold keys do to a tree: to the node under the cursor, to it and everything inside
+/// it, or to the whole tree (`openAll(depth: 2)`: two levels open, the rest folded).
+enum FoldAction {
+    case toggle, open, close
+    case openSubtree, closeSubtree
+    case openAll(depth: Int?), closeAll
 }
 
 /// What a visual selection in a table is made of.
@@ -90,6 +105,7 @@ struct VimKeyMap {
     private var count = 0
     private var pendingG = false
     private var pendingWindow = false // after ⌃w
+    private var pendingFold = false   // after z
 
     /// Returns false when the view's own `keyDown` should run (⌘ shortcuts for the menu bar).
     mutating func handle(_ event: NSEvent, _ c: ViewerCommands) -> Bool {
@@ -97,11 +113,24 @@ struct VimKeyMap {
         let chars = event.charactersIgnoringModifiers ?? ""
         let n = max(count, 1)
         let hasCount = count > 0
-        defer { if !(chars.first?.isNumber ?? false) && chars != "g" { count = 0; pendingG = false } }
+        defer { if !(chars.first?.isNumber ?? false) && chars != "g" && !pendingFold { count = 0; pendingG = false } }
 
         if pendingWindow { // ⌃w + w / h / j / k / l / p: the only other window is the pane
             pendingWindow = false
             if ["w", "h", "j", "k", "l", "p"].contains(chars) { c.switchPane() }
+            return true
+        }
+
+        if pendingFold { // z + a / o / c / R / M, as in vim (2zR: two levels open)
+            pendingFold = false
+            switch chars {
+            case "a": c.fold(.toggle)
+            case "o": c.fold(.open)
+            case "c": c.fold(.close)
+            case "R": c.fold(.openAll(depth: hasCount ? count : nil))
+            case "M": c.fold(.closeAll)
+            default: break
+            }
             return true
         }
 
@@ -185,6 +214,11 @@ struct VimKeyMap {
         case "y": c.copySelection()
         case "Y": c.copyRow()
         case "C": c.copyColumn()
+        case "z": pendingFold = true
+        case "e": c.fold(.openSubtree)
+        case "c": c.fold(.closeSubtree)
+        case "J": c.moveSibling(n)
+        case "K": c.moveSibling(-n)
         case "v": c.toggleVisual(.cells)
         case "V": c.toggleVisual(.rows)
         case "i": c.switchPane()       // like Enter: into the detail pane

@@ -35,6 +35,9 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     private var sheetCache: [Int: TableData] = [:]
     private let sheetBar = TabBarView()
     private var data = TableData(header: [], rows: [], totalRows: 0)
+    /// JSON: which array of objects in the file is the table (set by the controller before `load`).
+    var jsonPath: [JSONNode.Step] = []
+    private var jsonLabel: String? // its jq path, for the window subtitle
     private var theme = Theme.load()
     private var font = NSFont.systemFont(ofSize: 14)
     private var digitFont = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
@@ -58,6 +61,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     var view: NSView { root }
     /// Window subtitle for workbooks / databases: the sheet or table name (and its note).
     var status: String? {
+        if let jsonLabel { return jsonLabel }
         guard let book, book.sheetNames.indices.contains(sheetIndex) else { return nil }
         let name = book.sheetNames[sheetIndex]
         return book.sheetNote(sheetIndex).map { "\(name) (\($0))" } ?? name
@@ -234,6 +238,14 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         let savedOrigin = scrollView.contentView.bounds.origin
         switch source {
         case .file(let url):
+            jsonLabel = nil
+            if kind.isJSON {
+                book = nil
+                let array = JSONSource.read(source, kind)?.node(at: jsonPath)
+                data = array?.table() ?? TableData(header: ["Not an array of objects"], rows: [], totalRows: 0)
+                jsonLabel = array.map { "\($0.path) as a table" }
+                break
+            }
             if case .workbook = kind { loadBook(url, "xlsx") { try Workbook(url: $0) }; break }
             if case .database = kind { loadBook(url, "sqlite") { try SQLiteDatabase(url: $0) }; break }
             guard let bytes = FileManager.default.contents(atPath: url.path) else {

@@ -1,0 +1,65 @@
+{
+  "name": "viw",
+  "version": "0.4.0",
+  "private": false,
+  "homepage": null,
+  "description": "A vim-keyed viewer for macOS. This string is long on purpose: the tree cuts it at the edge of the window, and the pane on the right shows all of it.\nIt also has a second line.",
+  "tags": [
+    "viewer",
+    "vim",
+    "macOS"
+  ],
+  "stats": {
+    "stars": 128,
+    "ratio": 0.875,
+    "big": 1e+21,
+    "empty": {},
+    "none": []
+  },
+  "users": [
+    {
+      "id": 1,
+      "name": "Alice",
+      "city": "Tokyo",
+      "score": 98.5,
+      "active": true,
+      "roles": [
+        "admin",
+        "dev"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Bob",
+      "city": "Osaka",
+      "score": 87,
+      "active": false,
+      "roles": [
+        "dev"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "山田 太郎",
+      "city": "札幌",
+      "score": 77,
+      "active": true,
+      "address": {
+        "zip": "060-0001",
+        "pref": "北海道"
+      }
+    },
+    {
+      "id": 4,
+      "name": "Dave",
+      "city": null,
+      "score": -3.5,
+      "active": true,
+      "roles": []
+    }
+  ],
+  "odd key": {
+    "with \"quotes\"": 1,
+    "emoji": "😀"
+  }
+}
