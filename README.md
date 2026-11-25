@@ -189,7 +189,8 @@ gets the usual inline scrubber.
 
 Relative links to other Markdown or source files open in the same tab, and `H` (or `Ctrl-o`, or a two-finger swipe to
 the right) goes back to where the link was — the file and how far it was scrolled; `L` (or a swipe to the left) goes
-forward again. `#heading` links within a document are part of the same history. ⌘-click opens a file link in a new tab
+forward again. The page follows the fingers during a swipe, as in Safari, and letting go early leaves you where you
+were. `#heading` links within a document are part of the same history. ⌘-click opens a file link in a new tab
 instead, leaving the current one where it is. `http(s)` / `mailto` links open in the default
 browser; links to other local files are revealed in Finder rather than launched, and other URL schemes are ignored.
 `f` labels the links in sight (home-row letters, two when there are many) so they can be followed from the keyboard,
