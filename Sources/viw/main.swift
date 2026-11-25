@@ -206,7 +206,7 @@ if args.contains("-h") || args.contains("--help") {
     keys (`?` in the app shows the ones for the current view):
 
     """)
-    print(KeyHelp.plainText(KeyHelp.common + [KeyHelp.text, KeyHelp.toc, KeyHelp.json, KeyHelp.table, KeyHelp.sheets, KeyHelp.archive, KeyHelp.pdf, KeyHelp.image, KeyHelp.diagram, KeyHelp.media]))
+    print(KeyHelp.plainText(KeyHelp.all))
     print("    A second `viw` hands its files to the running instance (they open as tabs).")
     exit(0)
 }

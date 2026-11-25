@@ -245,7 +245,7 @@ and `#heading` links now land on the heading they name, duplicates (`#setup-1`) 
 | `+` / `-` / `=` | zoom in / out / reset (persisted) |
 | `q` | close the tab; the last one leaves an empty window, and `q` there closes the window (the app quits with its last window) |
 | `Esc` | clear pending count / selection |
-| `?` | key help for the current view as an overlay (Help › Keyboard Shortcuts, `⌘/`); `?` / `Esc` / `q` closes it |
+| `?` | key help as an overlay (Help › Keyboard Shortcuts, `⌘/`): the current view's keys first, then the common ones, as key caps. `/` filters by key or description (`Esc` clears), `j` / `k` / `d` / `u` / `gg` / `G` scroll when it does not fit; `?` / `Esc` / `q` closes it |
 | `Space`, `n` / `N` | animated images: pause / play, step a frame |
 | `Space`, `j` / `k`, `d` / `u`, `h` / `l`, `m` | video / audio: play / pause, seek 5 s / 30 s, step a frame, mute (`+` / `-` volume) |
 
@@ -322,7 +322,7 @@ Only flat `key = value` lines are parsed (no TOML library is linked). Unknown fo
 | `Sources/viw/Notebook.swift` | Jupyter notebook → Markdown (cells, outputs, pictures) |
 | `Sources/viw/RichDocument.swift` | doc / odt / rtf / rtfd through NSAttributedString's importers, restyled for the theme |
 | `Sources/viw/VimKeys.swift` | `ViewerCommands` and the vim key map shared by the text and table views |
-| `Sources/viw/KeyHelp.swift` | the key bindings as data (`?` overlay, Help menu, `viw -h`) and the overlay view |
+| `Sources/viw/KeyHelp.swift` | the key bindings as data (keys as ways × counterparts × sequences, an action and a note) for the `?` overlay, the Help menu and `viw -h`, and the overlay that draws them as key caps |
 | `Sources/viw/Toast.swift` | the short-lived "Copied …" pill |
 | `Sources/viw/SingleInstance.swift` | CFMessagePort hand-off from a second `viw` process to the running one |
 | `Sources/viw/VimTextView.swift` | read-only text view (centered column) that feeds keys to the vim key map |

@@ -69,7 +69,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
 
     var onOpenFile: ((URL) -> Void)?
     var onStatusChange: (() -> Void)?
-    var helpSections: [KeyHelp.Section] { book == nil ? [KeyHelp.table] : [KeyHelp.table, KeyHelp.sheets] }
+    var helpSections: [KeyHelp.Section] { [KeyHelp.table, KeyHelp.tableVisual, KeyHelp.tablePane] + (book == nil ? [] : [KeyHelp.sheets]) }
     var commands: ViewerCommands? {
         get { table.commands }
         set {
