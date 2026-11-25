@@ -98,6 +98,31 @@ struct TableData {
     var columnCount: Int { header.count }
     var truncated: Bool { rows.count + 1 < totalRows }
 
+    /// Rows as tab-separated text for the pasteboard. A cell holding a tab or a line break is
+    /// quoted (`"` doubled), which is how spreadsheets keep it in one cell when pasted.
+    static func tsv(_ rows: [[String]]) -> String {
+        rows.map { row in
+            row.map { cell in
+                cell.contains(where: { $0 == "\t" || $0.isNewline })
+                    ? "\"" + cell.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : cell
+            }.joined(separator: "\t")
+        }.joined(separator: "\n")
+    }
+
+    /// A Markdown table: `|` is escaped, line breaks become `<br>` and `numeric` columns are
+    /// right-aligned. Empty header cells get a space, which every renderer accepts.
+    static func markdown(header: [String], rows: [[String]], numeric: [Bool]) -> String {
+        func cell(_ s: String) -> String {
+            let t = s.replacingOccurrences(of: "|", with: "\\|")
+                .replacingOccurrences(of: "\r\n", with: "<br>")
+                .components(separatedBy: .newlines).joined(separator: "<br>")
+            return t.isEmpty ? " " : t
+        }
+        func line(_ cells: [String]) -> String { "| " + cells.joined(separator: " | ") + " |" }
+        let rule = header.indices.map { $0 < numeric.count && numeric[$0] ? "---:" : "---" }
+        return ([line(header.map(cell)), line(rule)] + rows.map { line($0.map(cell)) }).joined(separator: "\n")
+    }
+
     mutating func inferTypes() {
         types = (0..<columnCount).map { c in ColumnType.infer(rows.map { c < $0.count ? $0[c] : "" }) }
     }

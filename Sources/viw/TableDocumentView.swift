@@ -229,6 +229,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
             split.adjustSubviews()
         }
 
+        endVisual(redraw: false)
         let savedRow = table.selectedRow
         let savedOrigin = scrollView.contentView.bounds.origin
         switch source {
@@ -317,6 +318,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     func selectSheet(index i: Int) {
         guard let book, book.sheetNames.indices.contains(i), i != sheetIndex else { return }
         sheetIndex = i
+        endVisual(redraw: false)
         data = sheetTable(i)
         sortColumn = nil
         sortAscending = true
@@ -344,6 +346,10 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         let f = NumberFormatter()
         f.numberStyle = .decimal
         var parts: [String] = []
+        if let v = visual {
+            let name = [VisualMode.cells: "VISUAL", .rows: "VISUAL LINE", .columns: "VISUAL COLUMN"][v.mode]!
+            parts.append("-- \(name) -- (y: copy as TSV, Y: with header, m: as Markdown, Esc leaves)")
+        }
         if !filterQuery.isEmpty, let filtered {
             parts.append("Filter “\(filterQuery)”: \(f.string(from: filtered.count as NSNumber)!) of \(f.string(from: data.rows.count as NSNumber)!) rows (Esc clears)")
         }
@@ -406,12 +412,97 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     }
 
     private var lastCursorRow = -1
+
+    // MARK: - Visual mode (v / V / ⌃v)
+
+    /// Where `v` (a block of cells), `V` (whole rows) or `⌃v` (whole columns) was pressed, as a
+    /// visible row and a column; the selection runs from there to the cursor.
+    private var visual: (mode: VisualMode, row: Int, column: Int)?
+    private var lastVisualRows: ClosedRange<Int>?
+
+    private var visualRange: (rows: ClosedRange<Int>, columns: ClosedRange<Int>)? {
+        guard let v = visual, table.selectedRow >= 0, rowCount > 0, data.columnCount > 0 else { return nil }
+        let cursor = table.selectedRow
+        let rows = v.mode == .columns ? 0...(rowCount - 1) : min(v.row, cursor)...max(v.row, cursor)
+        let columns = v.mode == .rows ? 0...(data.columnCount - 1) : min(v.column, columnIndex)...max(v.column, columnIndex)
+        return (rows, columns)
+    }
+
+    /// `v` / `V` / `⌃v`: start selecting from the cursor; the same key again leaves the mode,
+    /// another one switches between cells, rows and columns (as in vim).
+    func toggleVisual(_ mode: VisualMode) {
+        guard root.window?.firstResponder === table, rowCount > 0, data.columnCount > 0 else { return }
+        if let v = visual {
+            if v.mode == mode { return endVisual() }
+            visual = (mode, v.row, v.column)
+        } else {
+            if table.selectedRow < 0 { select(row: 0) }
+            visual = (mode, table.selectedRow, columnIndex)
+            table.selectionHighlightStyle = .none // the selection is painted cell by cell instead
+        }
+        redrawCursorRows()
+        updateFooter()
+    }
+
+    /// Leave visual mode; `redraw: false` when the grid is about to be reloaded anyway.
+    private func endVisual(redraw: Bool = true) {
+        guard visual != nil else { return }
+        visual = nil
+        table.selectionHighlightStyle = .regular
+        if redraw {
+            redrawCursorRows()
+            updateFooter()
+        } else {
+            lastVisualRows = nil
+        }
+    }
+
+    private enum CopyFormat { case tsv, tsvWithHeader, markdown }
+
+    /// `y` / `Y` / `m` in visual mode: the selection as TSV, as TSV under its header row, or as
+    /// a Markdown table (which always has the header).
+    private func copyVisual(_ format: CopyFormat) {
+        guard let r = visualRange else { return }
+        let header = r.columns.map { data.header[$0] }
+        let lines = r.rows.map { row -> [String] in
+            let record = data.rows[original(row)]
+            return r.columns.map { $0 < record.count ? record[$0] : "" }
+        }
+        let text: String, note: String
+        switch format {
+        case .tsv: (text, note) = (TableData.tsv(lines), "")
+        case .tsvWithHeader: (text, note) = (TableData.tsv([header] + lines), " with header")
+        case .markdown:
+            let numeric = r.columns.map { $0 < data.types.count && data.types[$0].isNumeric }
+            (text, note) = (TableData.markdown(header: header, rows: lines, numeric: numeric), " as Markdown")
+        }
+        let anchor = cellRect(column: columnIndex)
+        endVisual()
+        let size = lines.count == 1 && header.count == 1 ? "cell" : "\(lines.count) × \(header.count) cells"
+        put(text, label: size + note, detail: String(text.prefix(400)), near: anchor)
+    }
+
+    func copyMarkdown() -> Bool {
+        guard visual != nil else { return false }
+        copyVisual(.markdown)
+        return true
+    }
+
     /// Repaint the rows that carry the column cursor (the old one and the new one).
     private func redrawCursorRows() {
         var rows = IndexSet()
         if lastCursorRow >= 0, lastCursorRow < rowCount { rows.insert(lastCursorRow) }
         if table.selectedRow >= 0 { rows.insert(table.selectedRow) }
         lastCursorRow = table.selectedRow
+        // Visual mode: every row the selection covered or covers now.
+        let visualRows = visualRange?.rows
+        if lastVisualRows != nil || visualRows != nil {
+            // Only rows that have a view need repainting (`⌃v` covers every row of the table).
+            table.enumerateAvailableRowViews { _, row in
+                if lastVisualRows?.contains(row) == true || visualRows?.contains(row) == true { rows.insert(row) }
+            }
+        }
+        lastVisualRows = visualRows
         if !rows.isEmpty { table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns)) }
     }
 
@@ -525,6 +616,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
             focus()
             redrawCursorRows()
         } else {
+            endVisual()
             if table.selectedRow < 0 { select(row: 0) }
             if !detailEnabled { detailEnabled = true; updateDetail() }
             fieldIndex = columnIndex // the pane picks up the grid's column cursor
@@ -574,6 +666,12 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
             tf.drawsBackground = true
             tf.backgroundColor = .findHighlightColor
             tf.textColor = .black
+        } else if let v = visualRange, v.rows.contains(row), v.columns.contains(col) {
+            // visual mode: the selection, with the cursor cell in the accent colour
+            let cursor = row == table.selectedRow && col == columnIndex
+            tf.drawsBackground = true
+            tf.backgroundColor = cursor ? .selectedContentBackgroundColor : .selectedTextBackgroundColor
+            tf.textColor = cursor ? .alternateSelectedControlTextColor : .labelColor
         } else if row == table.selectedRow, col == columnIndex, root.window?.firstResponder === table {
             // the column cursor: a light cell on the selected (blue) row
             tf.drawsBackground = true
@@ -655,6 +753,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     /// is still visible.
     private func reorder() {
         let keep = table.selectedRow >= 0 ? original(table.selectedRow) : -1
+        endVisual(redraw: false) // its rows are visible positions, and those are about to change
         rebuildVisible()
         match = nil
         table.reloadData()
@@ -875,7 +974,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
     // MARK: - Selection
 
     /// `y` / ⌘C: in the pane, the selected text if any, else the current field; in the grid,
-    /// the cell under the column cursor.
+    /// the cell under the column cursor, or the visual selection as TSV.
     func copySelection() {
         let inPane = root.window?.firstResponder === detail
         if inPane, detail.selectedRange().length > 0 {
@@ -884,6 +983,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
                        near: paneRect(for: detail.selectedRange()))
             return
         }
+        if !inPane, visual != nil { return copyVisual(.tsv) }
         let column = inPane ? fieldIndex : columnIndex
         guard table.selectedRow >= 0 else { return }
         let record = data.rows[original(table.selectedRow)]
@@ -894,17 +994,35 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
         put(record[column], label: column < data.header.count ? data.header[column] : "cell", near: anchor)
     }
 
-    /// `Y`: the selected row as a tab-separated line.
+    /// `Y`: the selected row as a tab-separated line (visual mode: the selection under its header row).
     func copyRow() {
+        if visual != nil { return copyVisual(.tsvWithHeader) }
         guard table.selectedRow >= 0 else { return }
         put(data.rows[original(table.selectedRow)].joined(separator: "\t"), label: "row \(original(table.selectedRow) + 1)",
             near: cellRect(column: columnIndex))
     }
 
-    private func put(_ text: String, label: String, near anchor: NSRect?) {
+    /// `C`: the column under the cursor, top to bottom as shown (filter and sort apply), one
+    /// cell per line; in visual mode, the selected columns in full.
+    func copyColumn() {
+        if let v = visual {
+            visual = (.columns, v.row, v.column)
+            return copyVisual(.tsv)
+        }
+        guard root.window?.firstResponder === table, rowCount > 0, columnIndex < data.columnCount else { return }
+        let column = columnIndex
+        let text = TableData.tsv((0..<rowCount).map { row in
+            let record = data.rows[original(row)]
+            return [column < record.count ? record[column] : ""]
+        })
+        let name = data.header[column].isEmpty ? String(column + 1) : data.header[column]
+        put(text, label: "column \(name)", detail: String(text.prefix(400)), near: cellRect(column: column))
+    }
+
+    private func put(_ text: String, label: String, detail: String? = nil, near anchor: NSRect?) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        Toast.show(in: root, "Copied \(label)", detail: text, near: anchor)
+        Toast.show(in: root, "Copied \(label)", detail: detail ?? text, near: anchor)
     }
 
     /// The selected row's cell in `root` coordinates (nil when scrolled out of view).
@@ -936,6 +1054,7 @@ final class TableDocumentView: NSObject, DocumentView, NSTableViewDataSource, NS
             redrawCursorRows()
             return
         }
+        if visual != nil { return endVisual() } // Esc leaves visual mode first; the row stays selected
         if filtered != nil { applyFilter("") }
         table.deselectAll(nil)
         focus()

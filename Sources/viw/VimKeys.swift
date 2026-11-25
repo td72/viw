@@ -21,6 +21,13 @@ protocol ViewerCommands: AnyObject {
     func copySelection()
     /// `Y`: the whole line / row (tables: the row as TSV; `y` is the cell).
     func copyRow()
+    /// `C`: the whole column under the cursor (tables).
+    func copyColumn()
+    /// `v` / `V` / `⌃v`: visual mode in a table — select a block of cells / whole rows / whole
+    /// columns; `y` copies it as TSV, `Y` with the header row.
+    func toggleVisual(_ mode: VisualMode)
+    /// `m` in visual mode: the selection as a Markdown table; false where there is none (→ mute).
+    func copyMarkdown() -> Bool
     func clearSelection()
     /// `.`: show / hide the detail pane (tables: the selected row in full).
     func toggleDetail()
@@ -67,7 +74,14 @@ extension ViewerCommands {
     func swipeEnded(completed: Bool) {}
 
     func followLinkInNewTab() {} // only the document controller has links to follow
+    // The grid only; the detail pane selects text with the mouse.
+    func toggleVisual(_ mode: VisualMode) {}
+    func copyMarkdown() -> Bool { false }
+    func copyColumn() {}
 }
+
+/// What a visual selection in a table is made of.
+enum VisualMode { case cells, rows, columns }
 
 /// vim-style key handling shared by the text view and the table view: counts (`5j`),
 /// `gg` / `G` / `50G`, tabs (`gt`, `⌘1`…), scrolling, find, zoom. Mouse / trackpad scrolling
@@ -110,6 +124,7 @@ struct VimKeyMap {
             case "b": c.scrollPages(-n)
             case "[": c.clearSelection() // like Esc
             case "w": pendingWindow = true
+            case "v": c.toggleVisual(.columns) // vim's block mode; `v` is already a block here
             case "o": c.goBack(n) // vim's jump list; ⌃i is Tab (the next tab), so forward is `L` only
             default: break
             }
@@ -169,6 +184,9 @@ struct VimKeyMap {
         case "N": c.findNext(reverse: true)
         case "y": c.copySelection()
         case "Y": c.copyRow()
+        case "C": c.copyColumn()
+        case "v": c.toggleVisual(.cells)
+        case "V": c.toggleVisual(.rows)
         case "i": c.switchPane()       // like Enter: into the detail pane
         case ".": c.toggleDetail()     // show / hide the detail pane
         case "I": c.togglePanePosition()
@@ -180,7 +198,7 @@ struct VimKeyMap {
         case "q": c.closeWindow()
         case "+", "=": chars == "=" && !flags.contains(.shift) ? c.resetZoom() : c.zoom(1)
         case "?": c.showHelp()
-        case "m": c.toggleMute()
+        case "m": if !c.copyMarkdown() { c.toggleMute() }
         case "-": c.zoom(-1)
         case "\u{1B}": c.clearSelection() // Esc: clear pending count & selection
         default:

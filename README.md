@@ -239,8 +239,16 @@ bottom (remembered; `detail_pane = "bottom"` in the config sets the default). En
 into the pane (`⌃W W` / `⌃W L` work too; its title turns blue): there `j` / `k` / `gg` / `G` move a cursor over the
 record's fields, `y` / `⌘C` copy the highlighted field's value, `h` / `l` go to the previous / next record,
 `d` / `u` / `f` / `b` scroll the pane's text, and Esc returns to the grid. Esc in the grid deselects and closes
-the pane. In the grid, `y` or `⌘C` copies the cell under the cursor and `Y` the whole row as tab-separated text; entering the
+the pane. In the grid, `y` or `⌘C` copies the cell under the cursor, `Y` the whole row as tab-separated text and `C` the whole column (one cell per
+line, in the order shown); entering the
 pane puts its field cursor on the grid's column, and leaving it brings the column back.
+
+`v` starts a visual selection at the cursor, as in vim: the movement keys (`h` / `j` / `k` / `l`, `gg` / `G`, `0` / `$`,
+`d` / `u` …) stretch a block of cells from there. `V` selects whole rows instead and `⌃V` whole columns; pressing
+another of the three switches, and Esc or the same key again leaves the mode. `y` or `⌘C` copies the selection as
+tab-separated text — cells holding a tab or a line break are quoted, so it pastes into a spreadsheet cell for cell —
+`Y` does the same with the header row on top, and `m` copies it as a Markdown table (header included, numeric
+columns right-aligned). `C` copies the selected columns from top to bottom.
 
 The usual macOS shortcuts (`⌘C`, `⌘A`, `⌘F`, `⌘W`, `⌘Q`, `⌘+`, `⌘-`, `⌘0`, `⌃⌘F`) are in the menu bar, plus `⌘T` (open a file
 in a new tab), `⌘⇧]` / `⌘⇧[` (next / previous tab) and `⌘1`…`⌘8` / `⌘9` (nth / last tab). No shortcut uses the Option key, so

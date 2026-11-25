@@ -61,6 +61,24 @@ import Testing
         #expect(ColumnType.dateParts("10-01-2026") == nil)
     }
 
+    @Test func tsvQuotesOnlyCellsThatNeedIt() {
+        #expect(TableData.tsv([["a", "b"], ["1", "2"]]) == "a\tb\n1\t2")
+        #expect(TableData.tsv([["say \"hi\"", ""]]) == "say \"hi\"\t")
+        #expect(TableData.tsv([["two\nlines", "t\tab", "q\"\n"]]) == "\"two\nlines\"\t\"t\tab\"\t\"q\"\"\n\"")
+        #expect(TableData.tsv([]) == "")
+    }
+
+    @Test func markdownTable() {
+        let md = TableData.markdown(header: ["name", "", "n"], rows: [["a|b", "x\ny", "1"], ["", "z", "-2.5"]],
+                                    numeric: [false, false, true])
+        #expect(md == """
+        | name |   | n |
+        | --- | --- | ---: |
+        | a\\|b | x<br>y | 1 |
+        |   | z | -2.5 |
+        """)
+    }
+
     @Test func inferTypesOnTable() {
         var t = TableData(header: ["n", "s"], rows: [["1", "a"], ["2", "b"]], totalRows: 3)
         t.inferTypes()
