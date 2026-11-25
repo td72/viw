@@ -139,7 +139,22 @@ final class MarkdownRenderer {
         }
         let s = NSMutableAttributedString()
         s.append(inlines(h.inlineChildren, Inline(font: theme.heading(h.level), color: h.level == 6 ? theme.secondary : theme.text)))
+        // The table of contents and `#anchor` links find the heading by this mark.
+        if s.length > 0 {
+            s.addAttribute(.viwHeading, value: HeadingMark(level: h.level, title: Self.plainText(h)), range: NSRange(location: 0, length: s.length))
+        }
         finish(s, style)
+    }
+
+    /// What a heading says, without the markup (`plainText` of swift-markdown keeps the
+    /// backticks of inline code).
+    private static func plainText(_ node: Markup) -> String {
+        switch node {
+        case let t as Text: return t.string
+        case let c as InlineCode: return c.code
+        case is SoftBreak, is LineBreak: return " "
+        default: return node.children.map(plainText).joined()
+        }
     }
 
     /// `boxed`: wrap the lines in a gray NSTextBlock. Every paragraph becomes a table cell, and

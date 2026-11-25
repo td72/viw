@@ -27,6 +27,11 @@ protocol ViewerCommands: AnyObject {
     func fold(_ action: FoldAction)
     /// `J` / `K`: the next / previous sibling in a tree, skipping what is inside (JSON).
     func moveSibling(_ n: Int)
+    /// True where `]]` / `[[` move between headings (text); elsewhere a single `]` / `[`
+    /// changes the sheet at once.
+    var headingMotions: Bool { get }
+    /// `]]` / `[[`: the next / previous heading (`3]]`: three on).
+    func moveHeading(_ n: Int)
     /// `v` / `V` / `⌃v`: visual mode in a table — select a block of cells / whole rows / whole
     /// columns; `y` copies it as TSV, `Y` with the header row.
     func toggleVisual(_ mode: VisualMode)
@@ -85,6 +90,8 @@ extension ViewerCommands {
     // Trees only.
     func fold(_ action: FoldAction) {}
     func moveSibling(_ n: Int) {}
+    var headingMotions: Bool { false }
+    func moveHeading(_ n: Int) {}
 }
 
 /// What the fold keys do to a tree: to the node under the cursor, to it and everything inside
@@ -106,6 +113,7 @@ struct VimKeyMap {
     private var pendingG = false
     private var pendingWindow = false // after ⌃w
     private var pendingFold = false   // after z
+    private var pendingBracket: String? // after ] or [ where a second one moves by heading
 
     /// Returns false when the view's own `keyDown` should run (⌘ shortcuts for the menu bar).
     mutating func handle(_ event: NSEvent, _ c: ViewerCommands) -> Bool {
@@ -113,12 +121,20 @@ struct VimKeyMap {
         let chars = event.charactersIgnoringModifiers ?? ""
         let n = max(count, 1)
         let hasCount = count > 0
-        defer { if !(chars.first?.isNumber ?? false) && chars != "g" && !pendingFold { count = 0; pendingG = false } }
+        defer { if !(chars.first?.isNumber ?? false) && chars != "g" && !pendingFold && pendingBracket == nil { count = 0; pendingG = false } }
 
         if pendingWindow { // ⌃w + w / h / j / k / l / p: the only other window is the pane
             pendingWindow = false
             if ["w", "h", "j", "k", "l", "p"].contains(chars) { c.switchPane() }
             return true
+        }
+
+        if let bracket = pendingBracket { // ]] / [[; any other key is just that key
+            pendingBracket = nil
+            if chars == bracket, flags.subtracting(.shift).isEmpty {
+                c.moveHeading(bracket == "]" ? n : -n)
+                return true
+            }
         }
 
         if pendingFold { // z + a / o / c / R / M, as in vim (2zR: two levels open)
@@ -179,8 +195,9 @@ struct VimKeyMap {
         }
 
         switch chars {
-        case "]": c.selectSheet(offset: n)  // next / previous sheet (3]: three ahead)
-        case "[": c.selectSheet(offset: -n)
+        case "]", "[":
+            if c.headingMotions { pendingBracket = chars } // text: ]] / [[ move by heading
+            else { c.selectSheet(offset: chars == "]" ? n : -n) } // next / previous sheet (3]: three ahead)
         case "0"..."9":
             if chars == "0" && !hasCount { c.scrollHorizontal(-1_000_000) } // `0` → far left
             else { count = count * 10 + Int(chars)! }

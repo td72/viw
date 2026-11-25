@@ -82,6 +82,7 @@ import Testing
         detail_pane = "Bottom"
         pdf_mode = "sideways"
         close_empty = "keep"
+        toc = "Open"
         [section]
         ignored = 1
         """)
@@ -93,6 +94,8 @@ import Testing
         #expect(c.detailPane == "bottom")
         #expect(c.pdfMode == nil)               // unknown value is dropped
         #expect(c.closeEmpty == "keep")
+        #expect(c.toc == "open")
+        #expect(Config.parse("toc = sideways").toc == nil)
     }
 
     @Test func emptyAndOdd() {

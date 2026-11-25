@@ -541,4 +541,9 @@ final class VimOutlineView: NSOutlineView {
     override func keyDown(with event: NSEvent) {
         guard let c = commands, keys.handle(event, c) else { return super.keyDown(with: event) }
     }
+
+    /// Called with true / false as the outline gains / loses keyboard focus.
+    var onFocusChange: ((Bool) -> Void)?
+    override func becomeFirstResponder() -> Bool { let ok = super.becomeFirstResponder(); if ok { onFocusChange?(true) }; return ok }
+    override func resignFirstResponder() -> Bool { let ok = super.resignFirstResponder(); if ok { onFocusChange?(false) }; return ok }
 }

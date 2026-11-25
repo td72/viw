@@ -8,4 +8,5 @@
 # max_width = 948               # readable column width in points
 # detail_pane = "right"       # CSV detail pane: "right" (default) or "bottom"
 # pdf_mode = "scroll"         # PDF: "scroll" (continuous, default) or "page" (one page at a time; p toggles)
+# toc = "closed"              # Markdown table of contents: "closed" (default) or "open" (t toggles and is remembered)
 # close_empty = "window"      # q / ⌘W on a window with no tabs: "window" (close it, default), "keep" (leave it open), "quit" (quit viw)

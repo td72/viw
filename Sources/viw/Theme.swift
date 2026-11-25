@@ -15,10 +15,15 @@ struct Theme {
     var detailPaneOnRight = true
     /// PDFs: continuous scrolling (default) or one page at a time.
     var pdfContinuous = true
+    /// Markdown: the table of contents beside the text (`t` toggles; closed by default).
+    /// Read here, but saved by the text view on its own (`saveTOC`): `save()` writes a whole
+    /// theme, and a copy loaded before the toggle would put the old value back.
+    var tocOpen = false
 
     static let defaultsKey = "viw.baseSize"
     static let detailPaneKey = "viw.detailPane"
     static let pdfModeKey = "viw.pdfMode"
+    static let tocKey = "viw.toc"
 
     /// Config file first, then the persisted zoom level on top.
     static func load() -> Theme {
@@ -34,6 +39,7 @@ struct Theme {
         t.maxWidth = c.maxWidth ?? 948
         t.detailPaneOnRight = (UserDefaults.standard.string(forKey: Theme.detailPaneKey) ?? c.detailPane) != "bottom"
         t.pdfContinuous = (UserDefaults.standard.string(forKey: Theme.pdfModeKey) ?? c.pdfMode) != "page"
+        t.tocOpen = (UserDefaults.standard.string(forKey: Theme.tocKey) ?? c.toc) == "open"
         var saved = UserDefaults.standard.double(forKey: defaultsKey)
         if saved == 0 { saved = UserDefaults.standard.double(forKey: "mdv.baseSize") } // pre-rename key
         if saved >= 8, saved <= 48 { t.baseSize = CGFloat(saved) }
@@ -44,6 +50,10 @@ struct Theme {
         UserDefaults.standard.set(Double(baseSize), forKey: Theme.defaultsKey)
         UserDefaults.standard.set(detailPaneOnRight ? "right" : "bottom", forKey: Theme.detailPaneKey)
         UserDefaults.standard.set(pdfContinuous ? "scroll" : "page", forKey: Theme.pdfModeKey)
+    }
+
+    static func saveTOC(open: Bool) {
+        UserDefaults.standard.set(open ? "open" : "closed", forKey: tocKey)
     }
 
     private static var warned: Set<String> = []
